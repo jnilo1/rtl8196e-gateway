@@ -4,7 +4,7 @@
 |---|---|
 | **Document date** | 2026-08-02 |
 | **Driver version** | 2.24 (`RTL8196E_DRV_VERSION` in `rtl8196e_main.c`) |
-| **Active release** | v4.3.0 (kernels `6.18.45` and `7.1.9`, `-rtl8196e-v4.3.0`); driver 2.24 adds true board-aware LAN LED off without changing the v2.23 datapath/recovery baseline |
+| **Active release** | v4.4.0 (kernels `6.18.45` and `7.1.9`, `-rtl8196e-v4.4.0`); driver 2.24 adds true board-aware LAN LED off without changing the v2.23 datapath/recovery baseline |
 
 Architecture reference for the from-scratch Ethernet driver. Findings
 and audit history live in `AUDIT.md`; the goals/non-goals contract is

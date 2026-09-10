@@ -21,7 +21,6 @@ unsigned char *p_kernel_img;
 unsigned long glexra_clock = 200 * 1000 * 1000;
 
 unsigned int gCHKKEY_HIT = 0;
-unsigned int gCHKKEY_CNT = 0;
 
 /*
  * Boot-hold: Linux can request the bootloader to stop at the <RealTek>
@@ -188,14 +187,9 @@ int check_system_image(unsigned long addr, IMG_HEADER_Tp pHeader,
 		    pHeader->len);
 
 		for (i = 0; i < pHeader->len; i += 2) {
-			if ((i % 0x10000) == 0) {
-				gCHKKEY_CNT++;
-				if (gCHKKEY_CNT > ACCCNT_TOCHKKEY) {
-					gCHKKEY_CNT = 0;
-					if (user_interrupt(0) == 1)
-						return 0;
-				}
-			}
+			if ((i % CHKKEY_POLL_BYTES) == 0 &&
+			    user_interrupt(0) == 1)
+				return 0;
 			sum += *(unsigned short *)(p_kernel_img + i);
 		}
 		if (sum) {
@@ -243,12 +237,8 @@ int check_rootfs_image(unsigned long addr)
 		 SIZE_OF_SQFS_SUPER_BLOCK + SIZE_OF_CHECKSUM;
 
 	for (i = 0; i < length; i += 2) {
-		gCHKKEY_CNT++;
-		if (gCHKKEY_CNT > ACCCNT_TOCHKKEY) {
-			gCHKKEY_CNT = 0;
-			if (user_interrupt(0) == 1)
-				return 0;
-		}
+		if ((i % CHKKEY_POLL_BYTES) == 0 && user_interrupt(0) == 1)
+			return 0;
 		sum += rtl_inw(addr + i);
 	}
 
@@ -359,19 +349,27 @@ int pollingDownModeKeyword(int key)
 {
 	int ch;
 
-	if (g_uart_peek >= 0)
-		return 0;
-	if (!uart_data_ready())
-		return 0;
-
-	ch = uart_getc_nowait();
-	if (ch == key) {
-		gCHKKEY_HIT = 1;
-		return 1;
+	/*
+	 * Drain whatever the FIFO holds, looking for the key.  Examining only
+	 * the first character would let one stray byte sit in front of the
+	 * user's key and hide it for the rest of the boot: the stashed
+	 * character is not consumed until the monitor runs, so every later
+	 * poll would return immediately.  A line transient at reset is enough
+	 * to cause that.  The loop always terminates — draining a byte costs
+	 * a couple of register reads, orders of magnitude less than the time
+	 * the next one takes to arrive on the wire.
+	 */
+	while (uart_data_ready()) {
+		ch = uart_getc_nowait();
+		if (ch == key) {
+			gCHKKEY_HIT = 1;
+			return 1;
+		}
+		/* Keep the first non-matching character so serial_inc() can
+		 * still return it; later ones are noise ahead of the prompt. */
+		if (g_uart_peek < 0)
+			g_uart_peek = ch;
 	}
-
-	/* Stash the character so serial_inc() can return it later */
-	g_uart_peek = ch;
 	return 0;
 }
 
@@ -516,6 +514,20 @@ void initFlash(void)
  */
 void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader)
 {
+#ifdef RAMTEST_TRACE
+	/*
+	 * RAM-test build: the kernel jump below is compiled out, so both
+	 * outcomes end in download mode and the key decision would otherwise
+	 * be invisible.  Report it instead of acting on it.  The two reads are
+	 * sequenced deliberately: user_interrupt() sets gCHKKEY_HIT itself, so
+	 * evaluating both inside one call would not say which one fired.
+	 */
+	int key_during_scan = gCHKKEY_HIT;
+	int key_at_decision = user_interrupt(0);
+
+	dprintf("\n---RAMTEST key check: during scan=%d, at decision=%d\n",
+		key_during_scan, key_at_decision);
+#endif
 	if (flag) {
 #ifdef RAMTEST_TRACE
 		dprintf("\n---RAMTEST mode: skipping kernel boot\n");

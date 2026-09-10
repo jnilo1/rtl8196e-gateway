@@ -9,9 +9,9 @@
 #include "uart.h"
 
 /*
- * UART peek buffer: when pollingDownModeKeyword() reads a character
- * that isn't ESC, it stashes it here so serial_inc() can return it
- * on the next call instead of losing it.  -1 means empty.
+ * UART peek buffer: while pollingDownModeKeyword() drains the FIFO
+ * looking for ESC, it stashes the first character that isn't ESC here
+ * so serial_inc() can return it instead of losing it.  -1 means empty.
  */
 int g_uart_peek = -1;
 

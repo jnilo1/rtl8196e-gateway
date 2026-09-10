@@ -55,15 +55,37 @@ usually indicates wiring, device selection, or power.
 
 ### Cannot enter the bootloader
 
-Open the terminal before applying power. Press `Esc` repeatedly from the first
-serial character until `<RealTek>` appears. A single late key press is easy for
-the short boot window to miss.
+The bootloader looks at the serial line only briefly, and it acts on the first
+character it finds waiting there. Tapping `Esc` after the board is already
+running often misses. Hold the key down before power reaches the board instead,
+and entry becomes reliable:
 
-If Linux starts:
+1. open the terminal at 38400 8N1, no flow control;
+2. remove power from the gateway;
+3. press `Esc` and keep it held down;
+4. restore power with the key still held.
 
-1. disconnect power;
-2. confirm the terminal still has 38400 8N1 and no flow control;
-3. reconnect power while repeatedly pressing `Esc`.
+Keyboard auto-repeat then keeps `Esc` arriving from the first moment the
+bootloader starts listening, so there is no window left to miss. Release the key
+once `<RealTek>` appears.
+
+How you cut and restore power depends on your wiring, and the two arrangements
+must not be mixed:
+
+- with the official supply connected, keep the serial adapter on three wires
+  only (GND, gateway TX, gateway RX), pin 1 VCC disconnected, and power-cycle at
+  the official supply;
+- with no official supply, powering the board from the adapter's 3.3 V on pin 1
+  is convenient: unplug that wire to remove power, plug it back to restore it.
+
+Never connect the adapter's 3.3 V while the official supply is plugged in, or
+two sources end up driving the same rail.
+
+If `Esc` still has no effect, suspect the host-to-gateway direction of the link
+rather than the bootloader. Let Linux boot and try typing at the serial console.
+If output arrives but nothing you type has any effect, check the pin 4 contact:
+it carries only what you transmit, so it can be bad while the banner still reads
+perfectly.
 
 On a gateway already running this project's firmware, serial entry is usually
 unnecessary: use the [upgrade guide](./upgrading.md), which invokes `boothold`

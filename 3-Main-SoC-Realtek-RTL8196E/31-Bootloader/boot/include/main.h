@@ -25,7 +25,11 @@ typedef struct _setting_header_ {
 } SETTING_HEADER_T, *SETTING_HEADER_Tp;
 
 //------------------------------------------------------------------------------------------
-#define ACCCNT_TOCHKKEY (512 * 1024) // 128K
+/*
+ * Poll the console for the download-mode key once per this many bytes of
+ * image scanned.  A power of two, so the test compiles to a mask.
+ */
+#define CHKKEY_POLL_BYTES 0x10000 /* 64 KiB */
 unsigned long return_addr;
 #define WAIT_TIME_USER_INTERRUPT (3 * CPU_CLOCK)
 

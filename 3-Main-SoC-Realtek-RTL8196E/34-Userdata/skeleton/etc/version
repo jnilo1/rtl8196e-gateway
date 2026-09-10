@@ -1,5 +1,5 @@
-RTL8196E Gateway - v4.3.0
-J. Nilo - 2026-09-03
+RTL8196E Gateway - v4.4.0
+J. Nilo - 2026-09-10
 ---
 crosstool-NG 1.28.0 (gcc 15.2.0 + binutils 2.45.1)
 musl 1.2.6

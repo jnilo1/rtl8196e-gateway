@@ -6,6 +6,66 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.4.0] - 2026-09-10
+
+_A bootloader release. Interrupting the boot with `Esc` stops being a knack and becomes
+reliable, the guides lead with the procedure that actually works, and the in-RAM syslog ring
+grows to hold about two weeks instead of four days. No kernel, rootfs or radio code changed;
+the four kernel images are rebuilt only to carry the new localversion._
+
+### Bootloader — V3.0, reliable escape into download mode
+
+`Esc` at boot was examined by a poll that gave up on the first character it found. Anything
+that was not `Esc` — a line transient at reset, a stray keystroke, an echo from a terminal
+that announces itself on connect — went into the peek slot, and every later poll then returned
+immediately, because nothing consumes that slot until the monitor runs. One byte in front of
+the user's key hid it for the rest of the boot, which is why the escape worked for some people
+every time and for others almost never. `pollingDownModeKeyword()` now drains the receive FIFO
+looking for the key, still keeping the first non-matching character for the monitor.
+
+The periodic poll inside the image checksum was inert. Its counter advanced once per 64 KiB
+scanned while the threshold was written in bytes, so firing it once would have taken 32 GiB of
+image: in practice the whole escape rested on a single poll taken just before the jump to the
+kernel. The interval is now expressed directly in bytes and the counter is gone, so the key is
+sampled roughly every 64 KiB of image as the original code intended. The rootfs checksum loop
+carried the same constant under a different unit and is corrected alongside, although it is
+compiled out on this flash layout.
+
+Under `RAMTEST_TRACE` the kernel jump is compiled out, so both outcomes end in download mode
+and the key decision left no trace. The RAM-test build now reports it, which is what makes
+this path testable without writing to flash. Validated on the bench in paired runs against a
+control built from the previous code: with a stray byte ahead of a continuous `Esc` stream the
+control never detected the key in two runs while the corrected build caught it in both, and
+neither reported a key when nothing was sent. The flashed V3.0 bootloader was then confirmed
+on the same board, stopping at the `<RealTek>` prompt on a normal reboot with four stray bytes
+interleaved ahead of every `Esc`.
+
+Reported in issue #159, where the escape had become impossible on a gateway whose rootfs
+offered no other way back into the bootloader.
+
+### Documentation — the boot-interrupt procedure
+
+Both guides told the reader to press `Esc` repeatedly as soon as serial output began, which is
+the fragile way to do it. They now lead with the procedure that is deterministic: open the
+terminal, remove power, hold the key down, then restore power. Keyboard auto-repeat feeds the
+line from the first moment the bootloader listens, so there is no window left to miss.
+
+The troubleshooting entry also spells out the two power arrangements, since they must not be
+mixed: with the official supply connected the serial adapter stays on three wires and pin 1
+VCC is left disconnected, while a board with no official supply can be powered from the
+adapter's 3.3 V and cycled on that wire. Connecting both drives the same rail from two sources.
+Finally, it adds the test that separates a bootloader problem from a dead link: let Linux boot
+and try typing at the serial console, because a readable banner only proves the direction from
+the gateway to the host.
+
+### Userdata — two weeks of syslog
+
+`syslogd` rotated three files of 32 KB in RAM. On a busy border-router site the `otbr-agent`
+warnings alone fill 32 KB in a little over a day, so the supervisor's "exited/died, restarting"
+line was rotated out before anyone came to look: a restart on the production gateway left no
+trace two and a half days later. The ring is now six files of 64 KB, which holds roughly two
+weeks for 384 KB of RAM.
+
 ## [4.3.0] - 2026-09-03
 
 _A rootfs and installer release. BusyBox moves to 1.38.0 on a patch stack that upstream has

@@ -46,7 +46,11 @@ start)
     # does not have yet. Re-running hostname there is harmless.
     [ -f /etc/hostname ] && hostname -F /etc/hostname
     echo "  syslog: started (syslogd + klogd)"
-    syslogd -O /var/log/messages -s 32 -b 2 -m 0 -t
+    # Ring of 6 x 64 KB in RAM. At the rate of a busy OTBR site (a few dozen
+    # otbr-agent warnings per day) that keeps about two weeks, enough for the
+    # supervisor's "exited/died, restarting" line to survive until someone
+    # looks. The former 3 x 32 KB rotated an event out in under four days.
+    syslogd -O /var/log/messages -s 64 -b 5 -m 0 -t
     klogd &
     ;;
 stop)

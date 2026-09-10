@@ -30,7 +30,7 @@ OUTDIR   = build
 # actual build moment of the current B_VERSION; update it together with
 # B_VERSION (include/ver.h) whenever the bootloader is rebuilt for a release.
 
-BOOT_CODE_TIME ?= 2026.06.20-23:51+0200
+BOOT_CODE_TIME ?= 2026.09.10-18:57+0200
 ifneq ($(BOOT_CODE_TIME_OVERRIDE),)
 BOOT_CODE_TIME := $(BOOT_CODE_TIME_OVERRIDE)
 endif

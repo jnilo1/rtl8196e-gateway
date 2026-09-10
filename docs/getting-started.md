@@ -35,7 +35,8 @@ Use this only if 3.3 V UART and bootloader TFTP workflows are already familiar:
 4. Open a 38400 8N1 serial terminal with no flow control.
 5. Put the host and bootloader on the same L2 subnet; default bootloader IP is
    `192.168.1.6`.
-6. Power on while pressing `Esc` until `<RealTek>` appears.
+6. Hold `Esc` down, apply power, and keep the key held until `<RealTek>`
+   appears.
 7. From the repository root, run `./flash_install_rtl8196e.sh` for Lidl or
    `BOARD=sengled-e39-g8c ./flash_install_rtl8196e.sh` for Sengled.
 8. After Linux boots, change the root password, install the prepared SSH key and
@@ -271,16 +272,24 @@ proceeding.
 
 ## 8. Enter the Realtek bootloader
 
-Keep the serial terminal open. Apply the gateway's normal power and press `Esc`
-repeatedly as soon as serial output begins. Stop when this prompt appears:
+Keep the serial terminal open. Remove power from the gateway, press `Esc` and
+keep the key held down, then restore power. Hold the key until this prompt
+appears:
 
 ```text
 <RealTek>
 ```
 
-If Linux starts instead, disconnect power and try again, pressing `Esc` earlier
-and repeatedly. Do not run flash commands until you have made the backup from
-the previous step or deliberately accepted that no original backup will exist.
+Holding the key before power reaches the board is what makes this reliable. The
+bootloader acts on the first character already waiting on the line, and keyboard
+auto-repeat guarantees that character is `Esc`. Pressing the key only once
+serial output has begun often misses.
+
+If Linux starts instead, see
+[Cannot enter the bootloader](./troubleshooting.md#cannot-enter-the-bootloader),
+which covers both power arrangements and what to check when `Esc` has no effect
+at all. Do not run flash commands until you have made the backup from the
+previous step or deliberately accepted that no original backup will exist.
 
 ## 9. Prepare the Ethernet path
 
