@@ -3,7 +3,7 @@
 This directory contains the writable user partition for the gateway.
 
 > **Board- and kernel-agnostic:** the same `userdata.bin` works for every board
-> (`lidl`, `sengled-e39-g8c`) and kernel line (`6.18`, `7.1`). No `BOARD`/`KERNEL`
+> (`lidl`, `sengled-e39-g8c`) and kernel line (`6.18`, `7.2`). No `BOARD`/`KERNEL`
 > selection applies here.
 
 ## Overview

@@ -1,19 +1,21 @@
 # Stage-2 bootloader Makefile (RTL8196E)
 #
-# Builds the main bootloader: hardware init, DDR calibration, SPI flash
-# driver, Ethernet/TFTP recovery, monitor console, and kernel loader.
-# All sources live in boot/ (flat layout); objects go to build/.
-# The stage-1 Makefile (btcode/) references boot.out directly to
-# produce the compressed flash image.
+# Builds the interactive bootloader that stage-1 (btcode/) decompresses
+# into RAM: SPI flash driver, Ethernet/TFTP recovery, monitor console,
+# kernel loader.  DRAM is already up when this code runs (stage-1 does the
+# DDR bring-up).  All sources live in boot/ (flat layout); objects go to
+# $(OUTDIR).  The stage-1 Makefile (btcode/) references boot.out directly
+# to produce the compressed flash image.
 #
 # Targets:
-#   boot  - build boot.out (ELF)
+#   boot  - build $(OUTDIR)/boot.out (ELF)
 #   clean - remove build outputs
 #
 # Variables (passed from top-level Makefile):
 #   JUMP_ADDR               - kernel entry address (e.g. 0x80500000)
 #   RAMTEST_TRACE           - if non-empty, build the RAM-test variant
-#   BOOT_CODE_TIME_OVERRIDE - override the build timestamp in the banner
+#   OUTDIR                  - object directory (build, or build-ramtest)
+#   BOOT_CODE_TIME_OVERRIDE - override the pinned build timestamp (ver.h)
 
 CROSS   ?= mips-lexra-linux-musl-
 CC       = $(CROSS)gcc
@@ -22,18 +24,7 @@ NM       = $(CROSS)nm
 OBJCOPY  = $(CROSS)objcopy
 OBJDUMP  = $(CROSS)objdump
 
-OUTDIR   = build
-
-# --- Build timestamp -------------------------------------------------------
-# Pinned build timestamp of this bootloader version (NOT a live `date` call),
-# so the build is reproducible: same source => same boot.bin. This is the
-# actual build moment of the current B_VERSION; update it together with
-# B_VERSION (include/ver.h) whenever the bootloader is rebuilt for a release.
-
-BOOT_CODE_TIME ?= 2026.09.10-18:57+0200
-ifneq ($(BOOT_CODE_TIME_OVERRIDE),)
-BOOT_CODE_TIME := $(BOOT_CODE_TIME_OVERRIDE)
-endif
+OUTDIR  ?= build
 
 # --- Board selection ---------------------------------------------------------
 # Per-board constants (DRAM size/top, DDR bring-up) live in
@@ -42,16 +33,39 @@ endif
 BOARD ?= lidl
 
 # --- Compiler / linker flags ------------------------------------------------
+#
+# The code type-puns freely (unsigned short * over headers, unsigned long *
+# over byte buffers): -fno-strict-aliasing makes that defined.
+# -ffreestanding: this is not a hosted environment; memcpy & co are ours,
+# and the only outside headers are the compiler's own <stdint.h>,
+# <stddef.h> and <stdarg.h> — never the sysroot's (build_bootloader.sh
+# checks the -MD dependency files for that).
+# Warnings: everything -Wall -Wextra reports is either fixed or promoted
+# to an error below; the three -Wno- cover what the switch driver and the
+# handler signatures do by design (unsigned char * vs char * buffers, int
+# indexes against unsigned sizes, unused handler arguments).
+
+WARNFLAGS = -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
+            -Wno-pointer-sign \
+            -Werror=return-type -Werror=parentheses \
+            -Werror=implicit-function-declaration -Werror=uninitialized \
+            -Werror=maybe-uninitialized -Werror=implicit-fallthrough \
+            -Werror=unused-variable -Werror=unused-function \
+            -Werror=array-parameter -Werror=unknown-pragmas
 
 CFLAGS   = -g -O -G 0 \
            -fomit-frame-pointer -fno-pic -mno-abicalls \
-           -I. -I./include -I../boards/$(BOARD) \
-           -D__KERNEL__ -Dlinux \
-           -DBOOT_CODE_TIME='"$(BOOT_CODE_TIME)"'
+           -fno-strict-aliasing -ffreestanding -MD \
+           $(WARNFLAGS) \
+           -I. -I./include -I../boards/$(BOARD)
 
-ASFLAGS  = -D__ASSEMBLY__ -x assembler-with-cpp -G 0
+ASFLAGS  = -x assembler-with-cpp -G 0
 
 LDFLAGS  = -nostdlib -T./ld.script -EB --static
+
+ifneq ($(BOOT_CODE_TIME_OVERRIDE),)
+CFLAGS  += -DBOOT_CODE_TIME='"$(BOOT_CODE_TIME_OVERRIDE)"'
+endif
 
 ifneq ($(RAMTEST_TRACE),)
 CFLAGS  += -DRAMTEST_TRACE
@@ -67,7 +81,7 @@ endif
 ASM_SRCS = head.S inthandler.S
 
 C_SRCS = \
-    arch.c main.c irq.c calloc.c libc.c \
+    arch.c main.c irq.c timer.c fatal.c calloc.c libc.c crc32.c \
     uart.c \
     flash.c net/eth.c net/tftpd.c \
     swCore.c swTable.c swNic.c \
@@ -103,4 +117,4 @@ $(OUTDIR):
 	@mkdir -p $@
 
 clean:
-	rm -rf $(OUTDIR)
+	rm -rf build build-ramtest

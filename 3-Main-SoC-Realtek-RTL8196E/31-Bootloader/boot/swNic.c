@@ -8,13 +8,13 @@
  * Copyright (c) 2024-2026 J. Nilo
  */
 #include "boot_common.h"
-#include "eth_api.h"
+#include "boot_soc.h"
+#include "boot_net.h"
 #include <stdlib.h>
 #include <rtl_types.h>
-#include <rtl_errno.h>
-#include <rtl8196x/loader.h> //wei edit
-#include <rtl8196x/asicregs.h>
-#include <rtl8196x/swNic_poll.h>
+#include "swcore_regs.h"
+#include "swcore.h"
+#include "ramtest_trace.h"
 
 /* refer to rtl865xc_swNic.c & rtl865xc_swNic.h
  */
@@ -68,6 +68,13 @@ static int32 txPktDoneDescIndex;
 static int32 rxPktCounter;
 static int32 txPktCounter;
 
+/* First receive since init or resync: no previous descriptor to return. */
+static int32 rxFirstTime = 1;
+
+/* Probes, visible in boot.nm: run-outs seen with a frame waiting, rings rebuilt. */
+unsigned int g_rx_runout;
+unsigned int g_rx_resync;
+
 #define BUF_FREE 0x00	    /* Buffer is Free  */
 #define BUF_USED 0x80	    /* Buffer is occupied */
 #define BUF_ASICHOLD 0x80   /* Buffer is hold by ASIC */
@@ -93,6 +100,8 @@ struct mBuf {
 	uint16 m_extsize; /* sizeof the cluster */
 	int8 m_reserved[2]; /* padding */
 };
+
+extern char eth0_mac[6];
 //--------------------------------------------------------------------------
 /* pkthdr records packet specific information. Each pkthdr is exactly 32 bytes.
  first 20 bytes are for ASIC, the rest 12 bytes are for driver and software
@@ -167,13 +176,6 @@ struct pktHdr {
 };
 //--------------------------------------------------------------------------
 
-/* LOCAL SUBPROGRAM SPECIFICATIONS
- */
-static void arpInput(uint8 *, uint32);
-static int32 arpResolve(uint8 *, uint8 *);
-
-#pragma ghs section text = ".iram"
-
 /**
  * swNic_receive - Receive one packet from the switch
  * @input: output pointer set to the received packet data
@@ -205,7 +207,6 @@ int32 swNic_receive(void **input, uint32 *pLen)
 	struct pktHdr *pPkthdr;
 	int32 pkthdr_index;
 	int32 mbuf_index;
-	static int32 firstTime = 1;
 	char *data;
 	int ret = -1;
 
@@ -235,7 +236,7 @@ int32 swNic_receive(void **input, uint32 *pLen)
 		} else
 			ret = -1;
 
-		if (!firstTime) {
+		if (!rxFirstTime) {
 			/* Calculate previous pkthdr and mbuf index */
 			pkthdr_index = currRxPkthdrDescIndex;
 			if (--pkthdr_index < 0)
@@ -253,7 +254,7 @@ int32 swNic_receive(void **input, uint32 *pLen)
 			rxPkthdrRing[0][pkthdr_index] |= DESC_SWCORE_OWNED;
 			rxMbufRing[mbuf_index] |= DESC_SWCORE_OWNED;
 		} else
-			firstTime = 0;
+			rxFirstTime = 0;
 
 		/* Increment index */
 		if (++currRxPkthdrDescIndex == rxPkthdrRingCnt[0])
@@ -261,59 +262,153 @@ int32 swNic_receive(void **input, uint32 *pLen)
 		if (++currRxMbufDescIndex == rxMbufRingCnt)
 			currRxMbufDescIndex = 0;
 
-		if (REG32(CPUIISR) & PKTHDR_DESC_RUNOUT_IP_ALL) {
-			/* Enable and clear interrupt for continue reception */
-			REG32(CPUIIMR) |= PKTHDR_DESC_RUNOUT_IE_ALL;
-			REG32(CPUIISR) = PKTHDR_DESC_RUNOUT_IP_ALL;
+		if (REG32(CPUIISR) & RX_RUNOUT_IP_ALL) {
+			/*
+			 * The switch ran out of descriptors while this frame
+			 * was waiting; the descriptor returned above is the
+			 * one it stalled on, so the ring moves again.  Count
+			 * it and clear the status.  The run-out interrupt is
+			 * never enabled: the status is level — it stays set
+			 * for as long as the switch is stalled, and the ISR
+			 * cannot un-stall it — so an enabled mask turns the
+			 * next run-out into an interrupt storm that starves
+			 * the only code able to return descriptors (the main
+			 * loop).  A ring the switch has given up on, with no
+			 * frame for the CPU either, is rebuilt by
+			 * swNic_rx_resync() from eth_poll().
+			 */
+			g_rx_runout++;
+			rt_inc(RT_RUNOUT_CNT);
+			rt_set(RT_RUNOUT_IMR, REG32(CPUIIMR));
+			REG32(CPUIISR) = RX_RUNOUT_IP_ALL;
 		}
 		return ret;
 	} else
 		return -1;
 }
 
-uint8 pktbuf[2048];
+/**
+ * swNic_rx_count - Frames taken from the RX ring since init
+ *
+ * eth_poll() compares two readings to tell a ring that is still moving
+ * from one the switch has given up on.
+ */
+uint32 swNic_rx_count(void) { return (uint32)rxPktCounter; }
+
+/**
+ * swNic_rx_resync - Rebuild both rings after the switch lost the RX ring
+ *
+ * Called from the main loop when the run-out status stays asserted across
+ * several polls that found nothing to receive: the switch's RX pointer no
+ * longer matches the CPU's index.  Stops the DMA engines, hands every RX
+ * descriptor back to the switch, drops whatever the TX ring still holds
+ * (an ACK the client will ask for again), reprograms the ring bases and
+ * restarts — TRXRDY puts the switch back at descriptor 0 of every ring, so
+ * the CPU indexes are reset in lockstep.  Same recovery as the kernel
+ * driver's ring resync.
+ */
+void swNic_rx_resync(void)
+{
+	uint32 i, j, k = 0;
+	struct pktHdr *pPkthdr;
+	struct mBuf *pMbuf;
+
+	g_rx_resync++;
+
+	REG32(CPUICR) &= ~(TXCMD | RXCMD);
+	REG32(SIRR) &= ~TRXRDY;
+
+	for (i = 0; i < txPkthdrRingCnt[0]; i++)
+		txPkthdrRing[0][i] &= ~DESC_OWNED_BIT; /* RISC owned */
+	currTxPkthdrDescIndex = 0;
+	txPktDoneDescIndex = 0;
+
+	for (i = 0; i < RTL865X_SWNIC_RXRING_MAX_PKTDESC; i++) {
+		for (j = 0; j < rxPkthdrRingCnt[i]; j++) {
+			pPkthdr = (struct pktHdr *)(rxPkthdrRing[i][j] &
+						    ~(DESC_OWNED_BIT | DESC_WRAP));
+			pMbuf = pPkthdr->ph_mbuf;
+			pPkthdr->ph_len = 0;
+			pMbuf->m_len = 0;
+			pMbuf->m_data = pMbuf->m_extbuf;
+			rxPkthdrRing[i][j] = (uint32)pPkthdr | DESC_SWCORE_OWNED;
+			rxMbufRing[k] = (uint32)pMbuf | DESC_SWCORE_OWNED;
+			k++;
+		}
+		if (rxPkthdrRingCnt[i] != 0)
+			rxPkthdrRing[i][rxPkthdrRingCnt[i] - 1] |= DESC_WRAP;
+	}
+	rxMbufRing[rxMbufRingCnt - 1] |= DESC_WRAP;
+	currRxPkthdrDescIndex = 0;
+	currRxMbufDescIndex = 0;
+	rxFirstTime = 1;
+
+	REG32(CPUTPDCR0) = (uint32)txPkthdrRing[0];
+	REG32(CPURPDCR0) = (uint32)rxPkthdrRing[0];
+	REG32(CPURPDCR1) = (uint32)rxPkthdrRing[1];
+	REG32(CPURPDCR2) = (uint32)rxPkthdrRing[2];
+	REG32(CPURPDCR3) = (uint32)rxPkthdrRing[3];
+	REG32(CPURPDCR4) = (uint32)rxPkthdrRing[4];
+	REG32(CPURPDCR5) = (uint32)rxPkthdrRing[5];
+	REG32(CPURMDCR0) = (uint32)rxMbufRing;
+
+	REG32(CPUIISR) = RX_RUNOUT_IP_ALL;
+	REG32(CPUICR) = TXCMD | RXCMD | BUSBURST_32WORDS | MBUF_2048BYTES;
+	REG32(SIRR) |= TRXRDY;
+}
+
+/*
+ * One transmit buffer per TX descriptor of ring 0.  A descriptor is handed
+ * to the switch with its own buffer and only reused once the switch has
+ * returned it (RISC-owned again), so back-to-back sends — the last-block
+ * ACK immediately followed by the UDP notification, or an ARP reply racing
+ * an ACK — can no longer overwrite a frame the switch is still reading.
+ */
+#define TX_BUF_COUNT 4
+#define TX_BUF_SIZE 1600
+static uint8 txbuf[TX_BUF_COUNT][TX_BUF_SIZE] __attribute__((aligned(4)));
+
+/* Bound on the spin for a descriptor to come back from the switch. */
+#define TX_WAIT_LOOPS 2000000
 
 /**
  * swNic_send - Transmit one packet through the switch
  * @output: pointer to the packet data
  * @len: packet length in bytes
  *
- * Copies the packet to an uncached buffer, sets up the TX descriptor,
- * and triggers transmission.  Pads packets shorter than 60 bytes.
+ * Copies the packet to the descriptor's own uncached buffer, sets up the
+ * TX descriptor, and triggers transmission.  Pads packets shorter than
+ * 60 bytes.  Does not wait for the frame to leave; see swNic_wait_tx_idle().
  *
- * Return: 0 on success, -1 if TX ring is full
+ * Return: 0 on success, -1 if the TX ring stayed full
  */
-/*************************************************************************
- *   FUNCTION
- *       swNic_send
- *
- *   DESCRIPTION
- *       This function writes one packet to tx descriptors, and waits until
- *       the packet is successfully sent.
- *
- *   INPUTS
- *       None
- *
- *   OUTPUTS
- *       None
- *************************************************************************/
 int32 swNic_send(void *output, uint32 len)
 {
 	struct pktHdr *pPkthdr;
-	// uint8 pktbuf[2048];
 	uint8 *pktbuf_alligned;
+	uint32 spins = 0;
 
 	int next_index;
 	if ((currTxPkthdrDescIndex + 1) == txPkthdrRingCnt[0])
 		next_index = 0;
 	else
 		next_index = currTxPkthdrDescIndex + 1;
-	if (next_index == txPktDoneDescIndex) {
-		dprintf("Tx Desc full!\n");
-		return -1;
+	while (next_index == txPktDoneDescIndex) {
+		swNic_txDone();
+		if (next_index != txPktDoneDescIndex)
+			break;
+		if (++spins > TX_WAIT_LOOPS) {
+			dprintf("Tx Desc full!\n");
+			return -1;
+		}
 	}
 
-	pktbuf_alligned = (uint8 *)(((uint32)pktbuf & 0xfffffffc) | 0xa0000000);
+	if (len > TX_BUF_SIZE)
+		len = TX_BUF_SIZE;
+	pktbuf_alligned =
+	    (uint8 *)(((uint32)txbuf[currTxPkthdrDescIndex % TX_BUF_COUNT] &
+		       0x1fffffff) |
+		      0xa0000000);
 	/* Copy Packet Content */
 	memcpy(pktbuf_alligned, output, len);
 
@@ -359,17 +454,9 @@ int32 swNic_send(void *output, uint32 len)
  */
 void swNic_txDone(void)
 {
-	struct pktHdr *pPkthdr;
-
 	while (txPktDoneDescIndex != currTxPkthdrDescIndex) {
 		if ((*(volatile uint32 *)&txPkthdrRing[0][txPktDoneDescIndex] &
 		     DESC_OWNED_BIT) == DESC_RISC_OWNED) {
-
-			pPkthdr =
-			    (struct pktHdr
-				 *)((int32)txPkthdrRing[0][txPktDoneDescIndex] &
-				    ~(DESC_OWNED_BIT | DESC_WRAP));
-
 			if (++txPktDoneDescIndex == txPkthdrRingCnt[0])
 				txPktDoneDescIndex = 0;
 		} else
@@ -377,7 +464,25 @@ void swNic_txDone(void)
 	}
 }
 
-#pragma ghs section text = default
+/**
+ * swNic_wait_tx_idle - Wait until the switch has taken every queued frame
+ *
+ * Returns when all TX descriptors are back in RISC ownership, or after a
+ * bounded spin.  Ownership means the switch has read the buffer; the
+ * frame may still sit in the egress queue for a short while.
+ */
+void swNic_wait_tx_idle(void)
+{
+	uint32 spins = 0;
+
+	for (;;) {
+		swNic_txDone();
+		if (txPktDoneDescIndex == currTxPkthdrDescIndex)
+			return;
+		if (++spins > TX_WAIT_LOOPS)
+			return;
+	}
+}
 
 /**
  * swNic_init - Initialize NIC descriptor rings and DMA

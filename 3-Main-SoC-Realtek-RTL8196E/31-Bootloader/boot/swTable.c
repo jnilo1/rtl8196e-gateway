@@ -11,13 +11,9 @@
 #include "boot_common.h"
 #include "boot_soc.h"
 #include <rtl_types.h>
-#include <rtl_errno.h>
-#include <rtl8196x/asicregs.h>
-#include <rtl8196x/swCore.h>
-#include <rtl8196x/vlanTable.h>
-#include <rtl8196x/swTable.h>
-
-/* Forward declaration (defined below) */
+#include "swcore_regs.h"
+#include "swcore.h"
+#include "main.h"
 
 /**
  * swTable_addEntry - Write an entry to a switch ASIC table
@@ -33,17 +29,24 @@
 int32 swTable_addEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
 {
 	REG32(SWTCR0) = REG32(SWTCR0) | EN_STOP_TLU;
-	while ((REG32(SWTCR0) & STOP_TLU_READY) == 0)
-		;
+	if (!swcore_wait_mask(SWTCR0, STOP_TLU_READY, STOP_TLU_READY)) {
+		REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
+		return FAILED;
+	}
 
-	tableAccessForeword(tableType, eidx, entryContent_P);
+	if (tableAccessForeword(tableType, eidx, entryContent_P) != SUCCESS) {
+		REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
+		return FAILED;
+	}
 
 	/* Activate add command */
 	REG32(SWTACR) = ACTION_START | CMD_ADD;
 
 	/* Wait for command done */
-	while ((REG32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		;
+	if (!swcore_wait_mask(SWTACR, ACTION_MASK, ACTION_DONE)) {
+		REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
+		return FAILED;
+	}
 
 	REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
 
@@ -52,31 +55,6 @@ int32 swTable_addEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
 		return ECOLLISION;
 	else
 		return 0;
-}
-
-int32 swTable_forceAddEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
-{
-	REG32(SWTCR0) = REG32(SWTCR0) | EN_STOP_TLU;
-	while ((REG32(SWTCR0) & STOP_TLU_READY) == 0)
-		;
-
-	tableAccessForeword(tableType, eidx, entryContent_P);
-
-	/* Activate add command */
-	REG32(SWTACR) = ACTION_START | CMD_FORCE;
-
-	/* Wait for command done */
-	while ((REG32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		;
-
-	REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
-
-	/* Check status */
-	if ((REG32(SWTASR) & TABSTS_MASK) == TABSTS_SUCCESS)
-		return 0;
-
-	/* There might be something wrong */
-	ASSERT_CSP(0);
 }
 
 /**
@@ -92,8 +70,10 @@ int32 swTable_readEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
 	uint32 *entryAddr;
 
 	REG32(SWTCR0) = REG32(SWTCR0) | EN_STOP_TLU;
-	while ((REG32(SWTCR0) & STOP_TLU_READY) == 0)
-		;
+	if (!swcore_wait_mask(SWTCR0, STOP_TLU_READY, STOP_TLU_READY)) {
+		REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
+		return FAILED;
+	}
 
 	ASSERT_CSP(entryContent_P);
 
@@ -101,8 +81,10 @@ int32 swTable_readEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
 			       eidx * TABLE_ENTRY_DISTANCE);
 
 	/* Wait for command ready */
-	while ((REG32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		;
+	if (!swcore_wait_mask(SWTACR, ACTION_MASK, ACTION_DONE)) {
+		REG32(SWTCR0) = REG32(SWTCR0) & ~EN_STOP_TLU;
+		return FAILED;
+	}
 
 	/* Read registers according to entry width of each table */
 	*((uint32 *)entryContent_P + 7) = *(entryAddr + 7);
@@ -119,13 +101,13 @@ int32 swTable_readEntry(uint32 tableType, uint32 eidx, void *entryContent_P)
 	return 0;
 }
 
-void tableAccessForeword(uint32 tableType, uint32 eidx, void *entryContent_P)
+int32 tableAccessForeword(uint32 tableType, uint32 eidx, void *entryContent_P)
 {
 	ASSERT_CSP(entryContent_P);
 
 	/* Wait for command done */
-	while ((REG32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		;
+	if (!swcore_wait_mask(SWTACR, ACTION_MASK, ACTION_DONE))
+		return FAILED;
 
 	/* Write registers according to entry width of each table */
 	REG32(TCR7) = *((uint32 *)entryContent_P + 7);
@@ -140,6 +122,7 @@ void tableAccessForeword(uint32 tableType, uint32 eidx, void *entryContent_P)
 	/* Fill address */
 	REG32(SWTAA) =
 	    table_access_addr_base(tableType) + eidx * TABLE_ENTRY_DISTANCE;
+	return SUCCESS;
 }
 
 /* ===== VLAN table access (vlanTable.c) ===== */
@@ -183,15 +166,20 @@ int32 swCore_netifCreate(uint32 idx, rtl_netif_param_t *param)
 	// I don't know the reason but if you want to use "-O" flag, must
 	// disalbe interrupt before swTable_readEntry();
 	temp = lx4180_ReadStatus();
-	if (0 != temp & 0x1) {
+	if ((temp & 0x1) != 0) {
 		temp2 = temp & 0xfffffffe;
 		lx4180_WriteStatus(temp2);
 	}
 
-	swTable_readEntry(TYPE_NETINTERFACE_TABLE, idx, &entryContent);
+	if (swTable_readEntry(TYPE_NETINTERFACE_TABLE, idx, &entryContent) !=
+	    SUCCESS) {
+		if ((temp & 0x1) != 0)
+			lx4180_WriteStatus(temp);
+		return FAILED;
+	}
 
 	// restore status register
-	if (0 != temp & 0x1) {
+	if ((temp & 0x1) != 0) {
 		lx4180_WriteStatus(temp);
 	}
 
@@ -224,9 +212,7 @@ int32 swCore_netifCreate(uint32 idx, rtl_netif_param_t *param)
 	/* Write into hardware */
 	if (swTable_addEntry(TYPE_NETINTERFACE_TABLE, idx, &entryContent) == 0)
 		return 0;
-	else
-		/* There might be something wrong */
-		ASSERT_CSP(0);
+	fatal("switch netif table write failed");
 }
 
 /**
@@ -247,15 +233,19 @@ int32 vlanTable_create(uint32 vid, rtl_vlan_param_t *param)
 	// I don't know the reason but if you want to use "-O" flag, must
 	// disalbe interrupt before swTable_readEntry();
 	temp = lx4180_ReadStatus();
-	if (0 != temp & 0x1) {
+	if ((temp & 0x1) != 0) {
 		temp2 = temp & 0xfffffffe;
 		lx4180_WriteStatus(temp2);
 	}
 
-	swTable_readEntry(TYPE_VLAN_TABLE, vid, &entryContent);
+	if (swTable_readEntry(TYPE_VLAN_TABLE, vid, &entryContent) != SUCCESS) {
+		if ((temp & 0x1) != 0)
+			lx4180_WriteStatus(temp);
+		return FAILED;
+	}
 
 	// restore status register
-	if (0 != temp & 0x1) {
+	if ((temp & 0x1) != 0) {
 		lx4180_WriteStatus(temp);
 	}
 
@@ -269,7 +259,5 @@ int32 vlanTable_create(uint32 vid, rtl_vlan_param_t *param)
 	/* Write into hardware */
 	if (swTable_addEntry(TYPE_VLAN_TABLE, vid, &entryContent) == 0)
 		return 0;
-	else
-		/* There might be something wrong */
-		ASSERT_CSP(0);
+	fatal("switch VLAN table write failed");
 }

@@ -78,7 +78,7 @@
 #   NETMASK      - Netmask (default: this host's own netmask)
 #   GATEWAY      - Default gateway (default: this host's own default route)
 #   BOARD        - "lidl" (default) or "sengled-e39-g8c" (kernel image baked in)
-#   KERNEL       - "6.18" (default) or "7.1" (kernel line baked in)
+#   KERNEL       - "6.18" (default) or "7.2" (kernel line baked in)
 #   CONFIRM      - Set to "y" to skip confirmation prompts (same as -y)
 #
 # J. Nilo - March 2026

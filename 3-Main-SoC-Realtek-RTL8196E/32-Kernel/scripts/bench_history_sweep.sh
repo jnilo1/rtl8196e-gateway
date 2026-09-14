@@ -46,7 +46,19 @@
 #                 'perf-boundaries' = the 7 tags where driver code / kernel
 #                 minor / gcc actually change (v3.0.0 v3.4.0 v3.4.1 v3.5.0
 #                 v3.8.0 v3.9.0 rc2), skipping perf-identical releases; ref=rc2.
+#   --balanced    alternate the order every round (AB, BA, AB, ...) instead of
+#                 shuffling it — a balanced design for a two-image comparison
 #   --dry-run     no flash / no measure — simulate, to validate the harness
+#
+# ENVIRONMENT-INVALID ROUNDS: a round where EVERY image measured far below the
+# operational band (TX < ENV_TX_FLOOR or RX < ENV_RX_FLOOR, on all images at
+# once) is not a kernel difference — it is the path (host NIC, switch, cable,
+# concurrent traffic) that failed for those minutes. Such a round is flagged
+# "env-invalid" in sweep.tsv, its rows are also archived in env-invalid.tsv,
+# it is excluded from the analysis, and it is REPLAYED once more at the end of
+# the schedule with the same image order (so a --balanced design stays
+# balanced). At most ENV_MAX_REPLAYS replays per sweep; beyond that the sweep
+# stops with an error rather than measure on a broken path.
 #
 # FLASH MECHANISM — why not flash_remote/boothold: the boothold binary reads
 # the HOLD-magic page address from a device-tree reserved-memory node, and
@@ -63,6 +75,8 @@
 #      IPERF3_BIN(iperf3) IFACE(eth0) DUR_TX(20) GAP(10) ALLOW_WIRELESS(0)
 #      KIMG_PATH(3-Main-SoC-Realtek-RTL8196E/32-Kernel/kernel-6.18.img — historical refs)
 #      BOOTHOLD_ADDR(0x01FFEFFC) NOTIFY_CMD(desktop notify-send)
+#      ENV_TX_FLOOR(40) ENV_RX_FLOOR(60) ENV_MAX_REPLAYS(2)  — see above
+#      ENV_SIM_INVALID_ROUND(0) — dry-run only: simulate round N as invalid
 #
 # Progress: a notification fires after EVERY point — desktop notify-send if
 # present; set NOTIFY_CMD="mycmd" to route it anywhere (gets the message as $1).
@@ -93,8 +107,13 @@ KIMG_PATH="${KIMG_PATH:-3-Main-SoC-Realtek-RTL8196E/32-Kernel/kernel-6.18.img}"
 BOOTHOLD_ADDR="${BOOTHOLD_ADDR:-0x01FFEFFC}"   # board HOLD-magic word (Lidl)
 HOLD_MAGIC="0x484F4C44"                          # "HOLD" — bootloader download-mode trigger
 NOTIFY_CMD="${NOTIFY_CMD:-}"   # per-point alert: a cmd that gets the message as $1; else desktop notify-send
+# "Environment invalid" round rule and floors (ENV_TX_FLOOR, ENV_RX_FLOOR,
+# ENV_MAX_REPLAYS): shared with the confirmation harness, see bench_env.sh.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/bench_env.sh"
+ENV_SIM_INVALID_ROUND="${ENV_SIM_INVALID_ROUND:-0}"   # dry-run: make round N read as a path fault
 
-ROUNDS=3; REPS=3; REF=""; RESTORE=""; MANIFEST=""; DRY=0; PRESET=""
+ROUNDS=3; REPS=3; REF=""; RESTORE=""; MANIFEST=""; DRY=0; PRESET=""; BALANCED=0
 LABELS=(); SOURCES=()
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -115,6 +134,7 @@ add_entry(){ LABELS+=("${1%%=*}"); SOURCES+=("${1#*=}"); }
 while [ $# -gt 0 ]; do
   case "$1" in
     --rounds) ROUNDS="$2"; shift 2 ;;
+    --balanced) BALANCED=1; shift ;;
     --reps)   REPS="$2"; shift 2 ;;
     --ref)    REF="$2"; shift 2 ;;
     --restore) RESTORE="$2"; shift 2 ;;
@@ -214,7 +234,8 @@ sim_tx(){ awk -v L="$1" -v r="$2" 'BEGIN{h=0; for(i=1;i<=length(L);i++)h=(h*31+i
 
 # ══ Preconditions ═════════════════════════════════════════════════════
 mkdir -p "$OUT_DIR"
-printf 'label\tround\ttx\trx\tuname\n' > "$CSV"
+printf 'label\tround\ttx\trx\tuname\tstatus\n' > "$CSV"
+INVALID_CSV="${OUT_DIR}/env-invalid.tsv"
 log "History sweep: ${#LABELS[@]} builds x ${ROUNDS} round(s), ref=${REF}, reps=${REPS}, dry=${DRY}"
 log "Builds: $(for i in "${!LABELS[@]}"; do printf '%s=%s ' "${LABELS[$i]}" "${SOURCES[$i]}"; done)"
 log "Output: $OUT_DIR"
@@ -234,18 +255,50 @@ if [ "$DRY" = 0 ]; then
   done
 fi
 
+# Environment-invalid round: every image measured (tx and rx numeric) sits
+# below the floors — TX under ENV_TX_FLOOR or RX under ENV_RX_FLOOR. A round
+# with no measured image at all is not "invalid", it is a flash failure and is
+# already recorded as such per point.
+round_env_invalid(){  # round -> 0 if invalid (all measured images below floors), 1 otherwise
+  awk -F'\t' -v OFS='\t' -v r="$1" 'NR>1 && $2==r { print $3, $4 }' "$CSV" | env_all_below
+}
+tag_round(){  # round status -> rewrite the status column of that round's rows in place
+  local tmp="${CSV}.tmp"
+  awk -F'\t' -v OFS='\t' -v r="$1" -v st="$2" 'NR>1 && $2==r { $6=st } { print }' "$CSV" > "$tmp" && mv -f "$tmp" "$CSV"
+}
+
 # ══ Rounds (randomized order each round) ══════════════════════════════
 idx_list="$(seq 0 $((${#LABELS[@]}-1)))"
 DONE=0; TOTAL=$(( ROUNDS * ${#LABELS[@]} ))
-for r in $(seq 1 "$ROUNDS"); do
-  order=$( [ "$DRY" = 0 ] && echo "$idx_list" | shuf || echo "$idx_list" )
-  log "──── round ${r}/${ROUNDS} — order: $(for k in $order; do printf '%s ' "${LABELS[$k]}"; done)"
+SCHEDULED="$ROUNDS"      # grows by one per replayed round
+REPLAYS=0                # env-invalid rounds replayed so far
+REPLAY_ORDER=""          # order to reuse for the next round when replaying
+REPLAY_OF=0              # the invalid round a replay stands in for (0 = regular round)
+REG=0                    # regular (non-replay) rounds started — drives the --balanced alternation
+r=0
+while [ "$r" -lt "$SCHEDULED" ]; do
+  r=$((r+1))
+  if [ -n "$REPLAY_ORDER" ]; then
+    order="$REPLAY_ORDER"; REPLAY_ORDER=""
+    log "──── round ${r}/${SCHEDULED} — REPLAY of env-invalid round ${REPLAY_OF}, same order: $(for k in $order; do printf '%s ' "${LABELS[$k]}"; done)"
+  else
+    REPLAY_OF=0; REG=$((REG+1))
+    if [ "$BALANCED" = 1 ]; then
+      # alternate on the regular-round count, not on r: a replay repeats its
+      # round's order, the next regular round must continue the alternation
+      order=$( if [ $((REG % 2)) -eq 1 ]; then echo "$idx_list"; else echo "$idx_list" | tac; fi )
+    else
+      order=$( [ "$DRY" = 0 ] && echo "$idx_list" | shuf || echo "$idx_list" )
+    fi
+    log "──── round ${r}/${SCHEDULED} — order: $(for k in $order; do printf '%s ' "${LABELS[$k]}"; done)"
+  fi
   for k in $order; do
     L="${LABELS[$k]}"; S="${SOURCES[$k]}"; DONE=$((DONE+1))
     if [ "$DRY" = 1 ]; then
       tx=$(sim_tx "$L" "$r"); rx="93.8"; un="dry-${L}"
+      [ "$ENV_SIM_INVALID_ROUND" = "$r" ] && { tx="3.1"; rx="84.7"; }   # simulated path fault
     else
-      un=$(flash_image "sweepimg_${L}.img") || { log_err "flash/boot FAILED for $L round $r — skipping point"; printf '%s\t%s\tNA\tNA\tflash-fail\n' "$L" "$r" >> "$CSV"; notify "point ${DONE}/${TOTAL} — ${L} r${r}: FLASH/BOOT FAILED"; continue; }
+      un=$(flash_image "sweepimg_${L}.img") || { log_err "flash/boot FAILED for $L round $r — skipping point"; printf '%s\t%s\tNA\tNA\tflash-fail\tflash-fail\n' "$L" "$r" >> "$CSV"; notify "point ${DONE}/${TOTAL} — ${L} r${r}: FLASH/BOOT FAILED"; continue; }
       quiesce_radio
       txv=()
       for _ in $(seq 1 "$REPS"); do
@@ -257,10 +310,26 @@ for r in $(seq 1 "$ROUNDS"); do
       restart_server
       rx=$(timeout --kill-after=5 $((DUR_TX+15)) iperf3 -c "$RTL8196E_IP" -p "$IPERF_PORT" -t "$DUR_TX" 2>/dev/null | recv_mbps || true)
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$L" "$r" "${tx:-NA}" "${rx:-NA}" "$un" >> "$CSV"
+    printf '%s\t%s\t%s\t%s\t%s\tok\n' "$L" "$r" "${tx:-NA}" "${rx:-NA}" "$un" >> "$CSV"
     log_info "  ${L} r${r}: TX ${tx:-NA}  RX ${rx:-NA}  [${un}]"
     notify "point ${DONE}/${TOTAL} done — ${L} round ${r}: TX ${tx:-NA} / RX ${rx:-NA} Mbit/s"
   done
+  # ── environment check on the whole round ──
+  if round_env_invalid "$r"; then
+    tag_round "$r" "env-invalid"
+    { [ -s "$INVALID_CSV" ] || head -1 "$CSV"; awk -F'\t' -v r="$r" 'NR>1 && $2==r' "$CSV"; } >> "$INVALID_CSV"
+    log_warn "round ${r}: ENVIRONMENT INVALID — every image below TX ${ENV_TX_FLOOR} / RX ${ENV_RX_FLOOR} Mbit/s at once (path fault, not a kernel difference); rows tagged env-invalid, archived in $(basename "$INVALID_CSV"), excluded from the analysis"
+    notify "round ${r}: environment invalid (all images below floors) — archived, will be replayed"
+    if [ "$REPLAYS" -lt "$ENV_MAX_REPLAYS" ]; then
+      REPLAYS=$((REPLAYS+1)); SCHEDULED=$((SCHEDULED+1)); TOTAL=$(( TOTAL + ${#LABELS[@]} ))
+      REPLAY_ORDER="$order"; REPLAY_OF="$r"
+      log "round ${r} will be replayed as round $((r+1)) with the same order (replay ${REPLAYS}/${ENV_MAX_REPLAYS})"
+      [ "$DRY" = 0 ] && { log_info "settling ${GAP}s before the replay"; sleep "$GAP"; }
+    else
+      log_err "round ${r}: ${ENV_MAX_REPLAYS} replay(s) already spent — the path is not usable, stopping the sweep (partial results in $CSV)"
+      break
+    fi
+  fi
 done
 
 # ══ Restore the box to a known build ══════════════════════════════════
@@ -277,8 +346,13 @@ ORDER_LABELS="$(printf '%s ' "${LABELS[@]}")"
   echo
   echo "Replay on one box (${RTL8196E_IP}), **${ROUNDS} randomized round(s)**, ref = \`${REF}\`, ${REPS} TX reps/point, ${DUR_TX}s, GAP ${GAP}s. TX normalized to the reference **measured in the same round** (cancels session drift); ± is the 95% CI of the per-round ratio. RX is a 1-rep line-rate sanity."
   echo
+  if [ -s "$INVALID_CSV" ]; then
+    inv_rounds=$(awk -F'\t' 'NR>1{print $2}' "$INVALID_CSV" | sort -un | tr '\n' ' ' | sed 's/ $//')
+    echo "**Environment-invalid round(s) ${inv_rounds}** — every image below TX ${ENV_TX_FLOOR} / RX ${ENV_RX_FLOOR} Mbit/s at once (path fault, not a kernel difference): excluded from the table below, rows archived in \`env-invalid.tsv\`, replayed (${REPLAYS} replay(s) of ${ENV_MAX_REPLAYS} allowed)."
+    echo
+  fi
   awk -F'\t' -v ref="$REF" -v order="$ORDER_LABELS" '
-    NR>1 && $3!="NA" { tx[$1"|"$2]=$3; rx[$1]=rx[$1]" "$4; seen[$1]=1; rounds[$2]=1; if(uname[$1]=="")uname[$1]=$5 }
+    NR>1 && $3!="NA" && $6=="ok" { tx[$1"|"$2]=$3; rx[$1]=rx[$1]" "$4; seen[$1]=1; rounds[$2]=1; if(uname[$1]=="")uname[$1]=$5 }
     function median(arr,n,  i,j,t){ for(i=0;i<n;i++)for(j=i+1;j<n;j++)if(arr[j]<arr[i]){t=arr[i];arr[i]=arr[j];arr[j]=t} return (n%2)?arr[int(n/2)]:(arr[n/2-1]+arr[n/2])/2 }
     function tval(df){ split("12.706 4.303 3.182 2.776 2.571 2.447 2.365 2.306 2.262 2.228",T," "); return (df>=1&&df<=10)?T[df]:(df>10?2.086:0) }
     END{

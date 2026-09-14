@@ -11,16 +11,24 @@
 #include "board.h"
 #include "boot_common.h"
 #include "boot_soc.h"
-#include "spi_common.h"
-#include "cache.h"
+#include "boot_irq.h"
 #include "main.h"
+#include "checks.h"
 #include "uart.h"
+#include "ramtest_trace.h"
 
-unsigned char *p_kernel_img;
+/* The only stack (head.S points sp at its top) and the malloc arena. */
+unsigned char init_task_union[SYS_STACK_SIZE];
+unsigned long kernelsp;
+char dl_heap[_SYSTEM_HEAP_SIZE];
 
 unsigned long glexra_clock = 200 * 1000 * 1000;
 
-unsigned int gCHKKEY_HIT = 0;
+/* Set once the download-mode key has been seen during the image scan. */
+static unsigned int gCHKKEY_HIT = 0;
+
+/* Flash-mapped address of the header of the image being booted. */
+static unsigned long return_addr;
 
 /*
  * Boot-hold: Linux can request the bootloader to stop at the <RealTek>
@@ -48,39 +56,41 @@ unsigned int gCHKKEY_HIT = 0;
  *   from that address ~13-27% of the time — symptoms consistent with
  *   the kernel scribbling low DRAM during early init or shutdown,
  *   before the reserved-memory no-map declaration takes effect.
- *   Moving HOLD just below the btcode stack (which lives at the very
- *   top of DRAM) puts it well above the kernel image (loaded at
- *   phys 0x00500000) and above any plausible early-boot scratch use
+ *   A page near the top of DRAM is well above the kernel image (loaded
+ *   at phys 0x00500000) and above any plausible early-boot scratch use
  *   of low memory.  100% reliable in testing.
+ *
+ * Why not the very top page (0x01FFF000)?  It produced false HOLD
+ * detections on cold boots.  The cause was never identified — the
+ * loader itself never touches that page (stage-1 runs without a stack
+ * and stage-2's stack sits inside its own BSS), so the writer is either
+ * the kernel or the stock loader.  The page below it was found clean by
+ * experiment and is what every consumer (DTS, boothold, this file)
+ * agrees on; do not move it without re-running that experiment.
  *
  * KSEG1 is used (not KSEG0) so that both the read and the clear
  * bypass the cache and go directly to DRAM.  Without this, the
  * clear (write 0) stays in the write-back cache and is lost on
  * power cycle — causing a false boot-hold on every cold boot.
  *
- * Top of DRAM (0x81FFFFFC) is NOT safe: btcode stack starts there.
- * 0x01FFEFFC is one 4KB page below the stack, well clear of stack
- * usage on this minimal bootloader.
+ * Optional TFTP-server-IP hand-off: `boothold <ip>` writes a marker word
+ * and the packed IPv4 just below the HOLD magic in the same page (see
+ * 34-Userdata/boothold/src/boothold.c).  It is honoured only when HOLD
+ * itself is valid — i.e. a deliberate warm reboot from a running Linux.
+ * On a cold boot the page holds garbage; the marker will not match and
+ * tftpd_entry() keeps the compiled default (192.168.1.6).
  */
-#define BOOTHOLD_MAGIC  0x484F4C44  /* "HOLD" */
-#define BOOTHOLD_PAGE   (BOARD_DRAM_TOP_KSEG1 - 0x2000)
-#define BOOTHOLD_RAM    ((volatile unsigned long *)(BOOTHOLD_PAGE + 0xFFC))
-
-/*
- * Optional TFTP-server-IP handoff: `boothold <ip>` writes a marker word and
- * the packed IPv4 just below the HOLD magic in the same reserved DRAM page
- * (see 34-Userdata/boothold/src/boothold.c).  It is honoured only when HOLD
- * itself is valid — i.e. a deliberate warm reboot from a running Linux.  On a
- * cold boot the page holds garbage; the marker will not match and tftpd_entry()
- * keeps the compiled default (192.168.1.6).
- */
-#define BOOTHOLD_IP_MAGIC_RAM ((volatile unsigned long *)(BOOTHOLD_PAGE + 0xFF8))
-#define BOOTHOLD_IP_RAM       ((volatile unsigned long *)(BOOTHOLD_PAGE + 0xFF4))
-#define BOOTHOLD_IP_MAGIC     0x49505634  /* "IPV4" */
 
 extern unsigned long g_tftp_server_ip;
+extern const char *g_flash_chip_name;
+extern unsigned int g_flash_jedec_id;
 
-void goToDownMode(void);
+static int check_image(IMG_HEADER_Tp pHeader);
+static void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader);
+static void showBoardInfo(void);
+static void setClkInitConsole(void);
+static void initHeap(void);
+static void initInterrupt(void);
 
 /**
  * start_kernel - Main bootloader entry point (called from init_arch)
@@ -92,18 +102,13 @@ void goToDownMode(void);
 void start_kernel(void)
 {
 	int ret;
-
 	IMG_HEADER_T header;
-	SETTING_HEADER_T setting_header;
-	//-------------------------------------------------------
+
 	setClkInitConsole();
-
 	initHeap();
-
 	initInterrupt();
-
-	initFlash();
-
+	timer_init(glexra_clock);
+	spi_probe();
 	showBoardInfo();
 
 	if (BOOTHOLD_RAM[0] == BOOTHOLD_MAGIC) {
@@ -121,7 +126,7 @@ void start_kernel(void)
 	}
 
 	return_addr = 0;
-	ret = check_image(&header, &setting_header);
+	ret = check_image(&header);
 
 	invalidate_iram();
 	doBooting(ret, return_addr, &header);
@@ -130,17 +135,15 @@ void start_kernel(void)
 /**
  * showBoardInfo - Print hardware identification banner
  *
- * Displays CPU speed, RAM size, and flash chip name on the console.
+ * The CPU frequency is the platform constant (400 MHz core, 200 MHz bus
+ * driving UART and timer).  The former per-boot calibration loop only fed
+ * this line and cost ~0.2 s on every boot.
  */
-void showBoardInfo(void)
+static void showBoardInfo(void)
 {
-	int cpu_speed;
-
-	cpu_speed = check_cpu_speed();
-
-	prom_printf("Realtek RTL8196E  CPU: %dMHz  RAM: " BOARD_DRAM_BANNER
-		    "  Flash: %s\n",
-		    cpu_speed, g_flash_chip_name);
+	prom_printf("Realtek RTL8196E  CPU: 400MHz  RAM: " BOARD_DRAM_BANNER
+		    "  Flash: %s (JEDEC %06x)\n",
+		    g_flash_chip_name, g_flash_jedec_id);
 	prom_printf("Bootloader: %s - %s - J. Nilo\n", B_VERSION, BOOT_CODE_TIME);
 }
 
@@ -148,217 +151,132 @@ void showBoardInfo(void)
  * check_system_image - Validate a firmware image at a flash address
  * @addr: flash-mapped address of the image header
  * @pHeader: output buffer for the parsed image header
- * @setting_header: output buffer for settings header
  *
- * Reads the image header from flash, checks signature (cs/cr),
- * copies the image body to RAM at pHeader->startAddr, and verifies
- * the 16-bit checksum.  Periodically polls for user ESC interrupt.
+ * Reads the image header from flash, checks signature (cs/cr), checks
+ * that the load window the header asks for is sane, copies the image
+ * body to RAM at pHeader->startAddr, and verifies the 16-bit checksum.
+ * Periodically polls for the user's ESC while summing.
  *
  * Return: 0 if not found, 1 if Linux image, 2 if Linux+rootfs image
  */
-int check_system_image(unsigned long addr, IMG_HEADER_Tp pHeader,
-		       SETTING_HEADER_Tp setting_header)
+static int check_system_image(unsigned long addr, IMG_HEADER_Tp pHeader)
 {
-	// Read header, heck signature and checksum
-	int i, ret = 0;
+	int ret = 0;
+	unsigned long i;
 	unsigned short sum = 0, *word_ptr;
-	char image_sig[4] = {0};
-	char image_sig_root[4] = {0};
+	unsigned char *img;
+#ifdef RAMTEST_TRACE
+	int t0, t1;
+#endif
+
 	if (gCHKKEY_HIT == 1)
 		return 0;
-	/*check firmware image.*/
+
 	word_ptr = (unsigned short *)pHeader;
 	for (i = 0; i < sizeof(IMG_HEADER_T); i += 2, word_ptr++)
 		*word_ptr = rtl_inw(addr + i);
 
-	memcpy(image_sig, FW_SIGNATURE, SIG_LEN);
-	memcpy(image_sig_root, FW_SIGNATURE_WITH_ROOT, SIG_LEN);
-
-	if (!memcmp(pHeader->signature, image_sig, SIG_LEN))
+	if (!memcmp(pHeader->signature, FW_SIGNATURE, SIG_LEN))
 		ret = 1;
-	else if (!memcmp(pHeader->signature, image_sig_root, SIG_LEN))
+	else if (!memcmp(pHeader->signature, FW_SIGNATURE_WITH_ROOT, SIG_LEN))
 		ret = 2;
-	if (ret) {
-
-		p_kernel_img = (unsigned char *)pHeader->startAddr;
-		flashread(
-		    (unsigned long)p_kernel_img,
-		    (unsigned int)(addr - FLASH_BASE + sizeof(IMG_HEADER_T)),
-		    pHeader->len);
-
-		for (i = 0; i < pHeader->len; i += 2) {
-			if ((i % CHKKEY_POLL_BYTES) == 0 &&
-			    user_interrupt(0) == 1)
-				return 0;
-			sum += *(unsigned short *)(p_kernel_img + i);
-		}
-		if (sum) {
-			ret = 0;
-		}
-	}
-
-	return (ret);
-}
-
-/**
- * check_rootfs_image - Validate a SquashFS root filesystem image
- * @addr: flash-mapped address of the rootfs
- *
- * Checks for sqsh/hsqs signature, reads the filesystem length from
- * the superblock, and verifies the 16-bit checksum.
- *
- * Return: 1 if valid, 0 otherwise
- */
-int check_rootfs_image(unsigned long addr)
-{
-	// Read header, heck signature and checksum
-	int i;
-	unsigned short sum = 0, *word_ptr;
-	unsigned long length = 0;
-	unsigned char tmpbuf[16];
-#define SIZE_OF_SQFS_SUPER_BLOCK 640
-#define SIZE_OF_CHECKSUM 2
-#define OFFSET_OF_LEN 2
-
-	if (gCHKKEY_HIT == 1)
+	if (!ret)
 		return 0;
 
-	word_ptr = (unsigned short *)tmpbuf;
-	for (i = 0; i < 16; i += 2, word_ptr++)
-		*word_ptr = rtl_inw(addr + i);
-
-	if (memcmp(tmpbuf, SQSH_SIGNATURE, SIG_LEN) &&
-	    memcmp(tmpbuf, SQSH_SIGNATURE_LE, SIG_LEN)) {
-		prom_printf("no rootfs signature at %X!\n", addr - FLASH_BASE);
+	/*
+	 * The header comes straight from flash.  One flipped bit in
+	 * startAddr would make the copy below land on this loader, on the
+	 * exception vectors or on the reserved pages, and the board would
+	 * hang before the ESC check ever ran.  A header that does not
+	 * describe a plausible window is treated as "no image": the loader
+	 * then falls into download mode, which is the designed recovery.
+	 */
+	if (!kernel_header_ok(pHeader->startAddr, pHeader->len,
+			      KERNEL_PARTITION_SIZE, RAM_LOAD_FLOOR,
+			      RAM_RESERVED_TOP, (unsigned long)_ftext,
+			      (unsigned long)_end)) {
+		prom_printf("image header at %X rejected: start=%X len=%X\n",
+			    addr - FLASH_BASE, pHeader->startAddr,
+			    pHeader->len);
 		return 0;
 	}
 
-	length = *(((unsigned long *)tmpbuf) + OFFSET_OF_LEN) +
-		 SIZE_OF_SQFS_SUPER_BLOCK + SIZE_OF_CHECKSUM;
-
-	for (i = 0; i < length; i += 2) {
-		if ((i % CHKKEY_POLL_BYTES) == 0 && user_interrupt(0) == 1)
-			return 0;
-		sum += rtl_inw(addr + i);
-	}
-
-	if (sum) {
-		prom_printf("rootfs checksum error at %X!\n",
-			    addr - FLASH_BASE);
-		return 0;
-	}
-	return 1;
-}
-
-static int check_image_header(IMG_HEADER_Tp pHeader,
-			      SETTING_HEADER_Tp psetting_header,
-			      unsigned long bank_offset)
-{
-	int i, ret = 0;
-	// flash mapping
-	return_addr =
-	    (unsigned long)FLASH_BASE + CODE_IMAGE_OFFSET + bank_offset;
-	/* quiet: suppress verbose header scan output */
-	ret = check_system_image((unsigned long)FLASH_BASE + CODE_IMAGE_OFFSET +
-				     bank_offset,
-				 pHeader, psetting_header);
-
-	if (ret == 0) {
-		return_addr = (unsigned long)FLASH_BASE + CODE_IMAGE_OFFSET2 +
-			      bank_offset;
-		ret = check_system_image((unsigned long)FLASH_BASE +
-					     CODE_IMAGE_OFFSET2 + bank_offset,
-					 pHeader, psetting_header);
-	}
-	if (ret == 0) {
-		return_addr = (unsigned long)FLASH_BASE + CODE_IMAGE_OFFSET3 +
-			      bank_offset;
-		ret = check_system_image((unsigned long)FLASH_BASE +
-					     CODE_IMAGE_OFFSET3 + bank_offset,
-					 pHeader, psetting_header);
-	}
-
-	i = CONFIG_LINUX_IMAGE_OFFSET_START;
-	while (i <= CONFIG_LINUX_IMAGE_OFFSET_END && (0 == ret)) {
-		return_addr = (unsigned long)FLASH_BASE + i + bank_offset;
-		if (CODE_IMAGE_OFFSET == i || CODE_IMAGE_OFFSET2 == i ||
-		    CODE_IMAGE_OFFSET3 == i) {
-			i += CONFIG_LINUX_IMAGE_OFFSET_STEP;
-			continue;
-		}
-		ret = check_system_image((unsigned long)FLASH_BASE + i +
-					     bank_offset,
-					 pHeader, psetting_header);
-		i += CONFIG_LINUX_IMAGE_OFFSET_STEP;
-	}
-
-#if !SKIP_ROOTFS_SCAN
-	if (ret == 2) {
-		ret = check_rootfs_image((unsigned long)FLASH_BASE +
-					 ROOT_FS_OFFSET + bank_offset);
-		if (ret == 0)
-			ret = check_rootfs_image(
-			    (unsigned long)FLASH_BASE + ROOT_FS_OFFSET +
-			    ROOT_FS_OFFSET_OP1 + bank_offset);
-		if (ret == 0)
-			ret = check_rootfs_image(
-			    (unsigned long)FLASH_BASE + ROOT_FS_OFFSET +
-			    ROOT_FS_OFFSET_OP1 + ROOT_FS_OFFSET_OP2 +
-			    bank_offset);
-
-		i = CONFIG_ROOT_IMAGE_OFFSET_START;
-		while ((i <= CONFIG_ROOT_IMAGE_OFFSET_END) && (0 == ret)) {
-			if (ROOT_FS_OFFSET == i ||
-			    (ROOT_FS_OFFSET + ROOT_FS_OFFSET_OP1) == i ||
-			    (ROOT_FS_OFFSET + ROOT_FS_OFFSET_OP1 +
-			     ROOT_FS_OFFSET_OP2) == i) {
-				i += CONFIG_ROOT_IMAGE_OFFSET_STEP;
-				continue;
-			}
-			ret = check_rootfs_image((unsigned long)FLASH_BASE + i +
-						 bank_offset);
-			i += CONFIG_ROOT_IMAGE_OFFSET_STEP;
-		}
-	}
+	img = (unsigned char *)pHeader->startAddr;
+#ifdef RAMTEST_TRACE
+	t0 = get_timer_jiffies();
 #endif
+	if (!flashread((unsigned long)img,
+		       (unsigned int)(addr - FLASH_BASE + sizeof(IMG_HEADER_T)),
+		       pHeader->len)) {
+		prom_printf("image read at %X failed\n", addr - FLASH_BASE);
+		return 0;
+	}
+#ifdef RAMTEST_TRACE
+	t1 = get_timer_jiffies();
+	dprintf("\n---RAMTEST kernel copy: %d bytes in %d ms\n",
+		(int)pHeader->len, (t1 - t0) * 10);
+#endif
+
+	for (i = 0; i < pHeader->len; i += 2) {
+		if ((i % CHKKEY_POLL_BYTES) == 0 && user_interrupt() == 1)
+			return 0;
+		sum += *(unsigned short *)(img + i);
+	}
+	if (sum)
+		ret = 0;
+
 	return ret;
 }
 
 /**
  * check_image - Scan flash for a valid firmware image
  * @pHeader: output buffer for the image header
- * @psetting_header: output buffer for settings header
  *
- * Searches known flash offsets and a configurable scan range for
- * a valid Linux kernel image and optional root filesystem.
+ * Tries the three fixed kernel slots, then every 64 KiB step of the
+ * configured scan range.  The rootfs is not scanned: Linux locates it.
  *
  * Return: 0 if no image found, 1 if kernel found, 2 if kernel+rootfs
  */
-int check_image(IMG_HEADER_Tp pHeader, SETTING_HEADER_Tp psetting_header)
+static int check_image(IMG_HEADER_Tp pHeader)
 {
+	static const unsigned long slots[] = {CODE_IMAGE_OFFSET,
+					      CODE_IMAGE_OFFSET2,
+					      CODE_IMAGE_OFFSET3};
+	unsigned long i, off;
 	int ret = 0;
-	// only one bank
 
-	ret = check_image_header(pHeader, psetting_header, 0);
+	for (i = 0; i < sizeof(slots) / sizeof(slots[0]) && !ret; i++) {
+		return_addr = (unsigned long)FLASH_BASE + slots[i];
+		ret = check_system_image(return_addr, pHeader);
+	}
 
+	off = CONFIG_LINUX_IMAGE_OFFSET_START;
+	while (off <= CONFIG_LINUX_IMAGE_OFFSET_END && !ret) {
+		if (off != CODE_IMAGE_OFFSET && off != CODE_IMAGE_OFFSET2 &&
+		    off != CODE_IMAGE_OFFSET3) {
+			return_addr = (unsigned long)FLASH_BASE + off;
+			ret = check_system_image(return_addr, pHeader);
+		}
+		off += CONFIG_LINUX_IMAGE_OFFSET_STEP;
+	}
 	return ret;
 }
 
-// monitor user interrupt
-int pollingDownModeKeyword(int key)
+/*
+ * pollingDownModeKeyword - drain the UART FIFO looking for the key
+ *
+ * Examining only the first character would let one stray byte sit in
+ * front of the user's key and hide it for the rest of the boot: the
+ * stashed character is not consumed until the monitor runs, so every
+ * later poll would return immediately.  A line transient at reset is
+ * enough to cause that.  The loop always terminates — draining a byte
+ * costs a couple of register reads, orders of magnitude less than the
+ * time the next one takes to arrive on the wire.
+ */
+static int pollingDownModeKeyword(int key)
 {
 	int ch;
 
-	/*
-	 * Drain whatever the FIFO holds, looking for the key.  Examining only
-	 * the first character would let one stray byte sit in front of the
-	 * user's key and hide it for the rest of the boot: the stashed
-	 * character is not consumed until the monitor runs, so every later
-	 * poll would return immediately.  A line transient at reset is enough
-	 * to cause that.  The loop always terminates — draining a byte costs
-	 * a couple of register reads, orders of magnitude less than the time
-	 * the next one takes to arrive on the wire.
-	 */
 	while (uart_data_ready()) {
 		ch = uart_getc_nowait();
 		if (ch == key) {
@@ -375,11 +293,14 @@ int pollingDownModeKeyword(int key)
 
 /**
  * user_interrupt - Check if the user pressed ESC to abort booting
- * @time: timeout (unused, immediate poll)
+ *
+ * Immediate poll, no wait: there is no timed window before or after the
+ * image scan.  The key is sampled while the image is checksummed and once
+ * more just before the jump.
  *
  * Return: 1 if ESC pressed, 0 otherwise
  */
-int user_interrupt(unsigned long time)
+int user_interrupt(void)
 {
 	return pollingDownModeKeyword(ESC);
 }
@@ -387,69 +308,66 @@ int user_interrupt(unsigned long time)
 /**
  * goToDownMode - Enter TFTP download and monitor console mode
  *
- * Initializes the Ethernet interface, starts the TFTP server,
- * then enters the interactive monitor command loop.
+ * Re-arms the timer tick (doBooting masked every interrupt), brings up
+ * the Ethernet switch, starts the TFTP server and enters the interactive
+ * monitor.  Received frames are handled from the main loop: the console
+ * reader calls eth_poll() while it waits for a character, so the network
+ * is serviced between keystrokes rather than from the interrupt handler.
  */
-void goToDownMode()
+void goToDownMode(void)
 {
-
-	eth_startup(0);
-
-	dprintf("\n---Ethernet init Okay!\n");
+	timer_irq_enable();
 	sti();
 
+	if (eth_startup(0)) {
+		prom_printf("---Ethernet recovery unavailable; serial monitor only\n");
+		monitor();
+		return;
+	}
+
+	dprintf("\n---Ethernet init Okay!\n");
+
 	tftpd_entry();
+	rt_init(); /* RAM-test build: breadcrumbs + watchdog armed */
+	g_uart_idle = eth_poll;
 
 	monitor();
-	return;
 }
 
-/* swCore.c — full switch-core reset (active_swcore toggle), used to flush any
- * in-flight CPU-port DMA before the kernel handoff. */
-extern void FullAndSemiReset(void);
-
-void goToLocalStartMode(unsigned long addr, IMG_HEADER_Tp pheader)
+/**
+ * goToLocalStartMode - Hand control to the kernel image found in flash
+ * @addr: flash-mapped address of the image header
+ * @pheader: parsed image header
+ *
+ * Returns only if the user pressed ESC in the meantime.
+ */
+static void goToLocalStartMode(unsigned long addr, IMG_HEADER_Tp pheader)
+    __attribute__((unused)); /* compiled out of the RAM-test build's flow */
+static void goToLocalStartMode(unsigned long addr, IMG_HEADER_Tp pheader)
 {
 	unsigned short *word_ptr;
 	void (*jump)(void);
-	int i;
+	unsigned long i;
 
 	word_ptr = (unsigned short *)pheader;
 	for (i = 0; i < sizeof(IMG_HEADER_T); i += 2, word_ptr++)
 		*word_ptr = rtl_inw(addr + i);
 
-	if (!user_interrupt(0)) // See if user escape during copy image
-	{
-		outl(0, GIMR0); // mask all interrupt
-
-		jump = (void *)(pheader->startAddr);
-
-		cli();
-		/*
-		 * Quiesce the Ethernet switch before handing off to the kernel.
-		 * The kernel re-inits the MAC, but until it does, a live switch can
-		 * DMA inbound frames into DRAM during early boot and corrupt it —
-		 * the intermittent post-flash boot loop. Turning the PHY interface
-		 * off stops new ingress but NOT an already-armed DMA, so on the
-		 * auto-boot path (taken on every boot) first stop the CPU-port DMA
-		 * engine and hard-reset the switch core (the same active_swcore reset
-		 * swCore_init() runs on every boot, which aborts any in-flight
-		 * transfer), THEN hold the PHY off (the reset re-defaults PCRP, so
-		 * PHY-off must come after it). Counterpart of the same quiesce in the
-		 * `J` command (monitor.c) and autoreboot() (tftpd.c).
-		 */
-		WRITE_MEM32(CPUICR, 0); /* stop CPU-port RX/TX DMA */
-		FullAndSemiReset();	/* hard-reset switch core — flush in-flight DMA */
-		WRITE_MEM32(PCRP0, (READ_MEM32(PCRP0) & (~EnablePHYIf)));
-		WRITE_MEM32(PCRP1, (READ_MEM32(PCRP1) & (~EnablePHYIf)));
-		WRITE_MEM32(PCRP2, (READ_MEM32(PCRP2) & (~EnablePHYIf)));
-		WRITE_MEM32(PCRP3, (READ_MEM32(PCRP3) & (~EnablePHYIf)));
-		WRITE_MEM32(PCRP4, (READ_MEM32(PCRP4) & (~EnablePHYIf)));
-		flush_cache();
-		jump(); // jump to start
+	if (user_interrupt()) /* user escaped while the image was copied */
 		return;
-	}
-	return;
+
+	REG32(GIMR_REG) = 0; /* mask all interrupts */
+	jump = (void *)(pheader->startAddr);
+	cli();
+	/*
+	 * Quiesce the Ethernet switch before handing off to the kernel: a
+	 * live switch can DMA inbound frames into DRAM during early boot
+	 * and corrupt it (the intermittent post-flash boot loop).  The same
+	 * sequence guards the `J` command and the post-flash reboot.
+	 */
+	swCore_quiesce();
+	flush_cache();
+	jump();
 }
 
 /**
@@ -458,10 +376,9 @@ void goToLocalStartMode(unsigned long addr, IMG_HEADER_Tp pheader)
  * Enables the MCR prefetch bit and initializes the serial console
  * at the configured baud rate.
  */
-void setClkInitConsole(void)
+static void setClkInitConsole(void)
 {
-	REG32(MCR_REG) = REG32(MCR_REG) | (1 << 27); // new prefetch
-
+	REG32(MCR_REG) = REG32(MCR_REG) | (1 << 27); /* new prefetch */
 	console_init(glexra_clock);
 }
 
@@ -470,14 +387,13 @@ void setClkInitConsole(void)
  *
  * Sets up the malloc/free arena using the dl_heap BSS region.
  */
-void initHeap(void)
+static void initHeap(void)
 {
-	/* Initialize malloc mechanism */
 	unsigned int heap_addr = ((unsigned int)dl_heap & (~7)) + 8;
 	unsigned int heap_end = heap_addr + sizeof(dl_heap) - 8;
+
 	i_alloc((void *)heap_addr, (void *)heap_end);
-	cli();
-	flush_cache(); // david
+	flush_cache();
 }
 
 /**
@@ -486,21 +402,13 @@ void initHeap(void)
  * Masks all hardware interrupts, configures CP0 exception vectors,
  * installs the IRQ dispatcher, and enables interrupts.
  */
-void initInterrupt(void)
+static void initInterrupt(void)
 {
-	rtl_outl(GIMR0, 0x00); /*mask all interrupt*/
-	setup_arch();	       /*setup the BEV0,and IRQ */
-	exception_init();      /*Copy handler to 0x80000080*/
-	init_IRQ();	       /*Allocate IRQfinder to Exception 0*/
+	rtl_outl(GIMR0, 0x00); /* mask all interrupts */
+	setup_arch();	       /* clear BEV, enable the IRQ lines */
+	exception_init();      /* copy the dispatcher to 0x80000080 */
+	init_IRQ();	       /* route exception 0 to IRQ_finder */
 	sti();
-}
-
-/**
- * initFlash - Probe and initialize the SPI flash
- */
-void initFlash(void)
-{
-	spi_probe(); // JSW : SPI flash init
 }
 
 /**
@@ -512,7 +420,7 @@ void initFlash(void)
  * If a valid image was found, checks for user interrupt (ESC),
  * then either boots the kernel or enters download mode.
  */
-void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader)
+static void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader)
 {
 #ifdef RAMTEST_TRACE
 	/*
@@ -523,7 +431,7 @@ void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader)
 	 * evaluating both inside one call would not say which one fired.
 	 */
 	int key_during_scan = gCHKKEY_HIT;
-	int key_at_decision = user_interrupt(0);
+	int key_at_decision = user_interrupt();
 
 	dprintf("\n---RAMTEST key check: during scan=%d, at decision=%d\n",
 		key_during_scan, key_at_decision);
@@ -532,24 +440,13 @@ void doBooting(int flag, unsigned long addr, IMG_HEADER_Tp pheader)
 #ifdef RAMTEST_TRACE
 		dprintf("\n---RAMTEST mode: skipping kernel boot\n");
 #else
-		switch (user_interrupt(WAIT_TIME_USER_INTERRUPT)) {
-		case LOCALSTART_MODE:
-		default:
+		if (!user_interrupt())
 			goToLocalStartMode(addr, pheader);
-		case DOWN_MODE:
+		/* goToLocalStartMode() returns only when the user escaped
+		 * during the copy: fall into download mode. */
 #endif
-			dprintf("\n---Escape booting by user\n");
-			REG32(GIMR_REG) = 0x0;
-
-			goToDownMode();
-#ifndef RAMTEST_TRACE
-			break;
-		} /*switch case */
-#endif
-	} /*if image correct*/
-	else {
-		REG32(GIMR_REG) = 0x0;
-		goToDownMode();
+		dprintf("\n---Escape booting by user\n");
 	}
-	return;
+	REG32(GIMR_REG) = 0x0;
+	goToDownMode();
 }

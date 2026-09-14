@@ -1,0 +1,89 @@
+name: Kernel text-layout guard (from-clean build)
+
+# The text placement layout of a kernel release (scripts/imem/layouts/<version>/)
+# is verified by build_kernel.sh itself: after the I-MEM relink it runs
+# scripts/imem/text_layout.py verify, which fails the build if the toolchain,
+# the config, the pads, the tracked functions' colours, the text sequence or any
+# reference into a pad drifted from the benchmarked layout. That guard is the
+# build's. This job replays it in CI on every change that can move the text —
+# a from-clean build of both boards, so the board-neutral config hash (the
+# built-in DTB selection is the only difference) is re-checked continuously.
+#
+# It does not replace the bench: it proves the shipped layout is the recorded
+# one, not that it still wins. The Lexra toolchain comes from
+# 1-Build-Environment/Dockerfile (crosstool-NG); the image is cached between
+# runs, the first run builds it (~1 h).
+
+on:
+  # Manual first: run it once by hand on the branch that carries it, check the
+  # Docker image, the GHA cache, the toolchain and both builds; once that run
+  # is green, restore the conditional triggers below.
+  workflow_dispatch:
+  # pull_request:
+  #   paths:
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/scripts/imem/layouts/**'
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/scripts/imem/**'
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18/**'
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/files-6.18/**'
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/config-6.18-realtek.txt'
+  #     - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh'
+  #     - '1-Build-Environment/Dockerfile'
+  #     - '.github/workflows/kernel-layout-guard.yml'
+  # push:
+  #   branches: [main, 'v*-pre']
+  #   paths: (same list)
+
+permissions:
+  contents: read
+
+jobs:
+  layout-guard:
+    name: from-clean build + text_layout.py verify (lidl, sengled-e39-g8c)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    # Only releases that carry a layout have something to guard.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the 6.18 line has no recorded layout
+        id: has-layout
+        run: |
+          v=$(awk -F'"' '/^        KERNEL_VERSION="6\.18\./{print $2; exit}' 3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ -f "3-Main-SoC-Realtek-RTL8196E/32-Kernel/scripts/imem/layouts/$v/layout.json" ]; then
+            echo "present=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=no" >> "$GITHUB_OUTPUT"; echo "no layout recorded for 6.18 ($v): nothing to guard"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.has-layout.outputs.present == 'yes'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the toolchain image (cached between runs)
+        if: steps.has-layout.outputs.present == 'yes'
+        uses: docker/build-push-action@v6
+        with:
+          context: 1-Build-Environment
+          file: 1-Build-Environment/Dockerfile
+          load: true
+          tags: rtl8196e-build-env:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: From-clean production build, lidl (guard runs inside build_kernel.sh)
+        if: steps.has-layout.outputs.present == 'yes'
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace/3-Main-SoC-Realtek-RTL8196E/32-Kernel \
+            rtl8196e-build-env:ci bash -c 'KERNEL=6.18 BOARD=lidl ./build_kernel.sh clean'
+
+      - name: From-clean production build, sengled-e39-g8c (same text, other DTB)
+        if: steps.has-layout.outputs.present == 'yes'
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace/3-Main-SoC-Realtek-RTL8196E/32-Kernel \
+            rtl8196e-build-env:ci bash -c 'KERNEL=6.18 BOARD=sengled-e39-g8c ./build_kernel.sh clean'
+
+      - name: Report
+        if: steps.has-layout.outputs.present == 'yes'
+        run: |
+          echo "text layout ${{ steps.has-layout.outputs.version }} verified on both boards from clean builds"

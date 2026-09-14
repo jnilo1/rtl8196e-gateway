@@ -15,6 +15,8 @@ SPLIT_FLASH="${SCRIPT_DIR}/3-Main-SoC-Realtek-RTL8196E/30-Backup-Restore/split_f
 # Host-side gateway address resolution — see lib/gwconf.sh.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib/gwconf.sh"
+# CRC trailer of the assembled fullflash.bin — see lib/fullflash_crc.sh.
+. "${SCRIPT_DIR}/lib/fullflash_crc.sh"
 
 # Addresses: flag > env > gateway.env > last install / last box reached > a
 # value derived from this host's own LAN > the historic 192.168.1.x constants.
@@ -198,6 +200,13 @@ backup_via_ssh() {
         echo "Padding fullflash.bin with ${pad} bytes (0xFF) to reach 16 MiB..."
         dd if=/dev/zero bs=1 count="$pad" 2>/dev/null | tr '\0' '\377' >> "${BACKUP_DIR}/fullflash.bin"
     fi
+
+    # The trailer read back from the chip (if any) described the image that
+    # was flashed, not what the flash holds now: recompute it so the V3.1
+    # loader accepts the restore and checks it end to end.
+    local crc
+    crc=$(ffcrc_write "${BACKUP_DIR}/fullflash.bin") || { echo "Error: could not write the CRC trailer" >&2; exit 1; }
+    echo "CRC trailer written (${crc}): the bootloader checks it on restore."
 }
 
 handle_bootloader() {

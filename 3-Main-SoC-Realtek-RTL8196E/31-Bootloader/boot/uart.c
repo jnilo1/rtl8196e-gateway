@@ -16,9 +16,16 @@
 int g_uart_peek = -1;
 
 /*
- * TX timeout: 6540 iterations ~340us @ 200MHz LexRA.
- * This matches the original timing; do not change without
- * measuring on real hardware.
+ * Called repeatedly while serial_inc() waits for a character.  Download
+ * mode points it at eth_poll() so the TFTP server runs from the main
+ * loop between keystrokes; NULL until then.
+ */
+void (*g_uart_idle)(void) = 0;
+
+/*
+ * TX wait bound.  A loop count, not a calibrated delay: the loader keeps
+ * going if the transmitter never drains (nothing attached), and the
+ * bound only has to exceed the time one character takes at 38400 baud.
  */
 #define UART_TX_TIMEOUT 6540
 
@@ -53,8 +60,10 @@ char serial_inc(void)
 		return (char)ch;
 	}
 
-	while (!(rtl_inb(UART_LSR) & LSR_DR))
-		;
+	while (!(rtl_inb(UART_LSR) & LSR_DR)) {
+		if (g_uart_idle)
+			g_uart_idle();
+	}
 
 	return (rtl_inb(UART_RBR) & 0xff);
 }
@@ -75,7 +84,6 @@ void console_init(unsigned long cpu_clock)
 
 	/* Compute baud rate divisor: divisor = (clock / 16) / baud - 1 */
 	divisor = (cpu_clock / 16) / BAUD_RATE - 1;
-	*(volatile unsigned long *)(0xa1000000) = divisor;
 	dll = divisor & 0xff;
 	dlm = divisor / 0x100;
 

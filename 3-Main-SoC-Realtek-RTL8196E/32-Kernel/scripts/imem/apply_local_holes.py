@@ -184,8 +184,10 @@ def main():
             path = os.path.join(build, item["object"])
             pristine = path + ".imem-pristine"
             if os.path.exists(pristine):
+                # copy2 keeps the pristine object's mtime: the restored .o must
+                # stay OLDER than a source edited since the last make, or make
+                # considers it up to date and never recompiles that source.
                 shutil.copy2(pristine, path)
-                os.utime(path, None)
                 restored += 1
         print(f"restored {restored}/{len(selected)} selected objects")
         return

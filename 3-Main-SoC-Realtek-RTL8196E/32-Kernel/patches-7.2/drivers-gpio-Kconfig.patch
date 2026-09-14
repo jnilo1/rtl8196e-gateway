@@ -1,0 +1,15 @@
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -615,6 +615,12 @@
+ 	help
+ 	  Say Y here to support RDA Micro GPIO controller.
+ 
++config GPIO_RTL819X
++	bool "Realtek RTL819x GPIO support"
++	depends on MIPS && OF_GPIO
++	select GPIO_GENERIC
++	default y
++
+ config GPIO_REALTEK_OTTO
+ 	tristate "Realtek Otto GPIO support"
+ 	depends on MACH_REALTEK_RTL || COMPILE_TEST

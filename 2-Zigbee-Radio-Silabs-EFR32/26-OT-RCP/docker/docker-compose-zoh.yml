@@ -41,7 +41,7 @@ services:
   # Zigbee2MQTT with zoh adapter — connects directly to the kernel UART bridge
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: ghcr.io/koenkk/zigbee2mqtt:2.7.2
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.1
     environment:
       - TZ=Europe/Paris
     volumes:

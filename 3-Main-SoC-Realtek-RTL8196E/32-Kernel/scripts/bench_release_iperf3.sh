@@ -26,8 +26,8 @@
 #   5. UDP RX  host->gw   3 reps   (-b 100M, median delivered ceiling + loss%)
 #
 # Output: raw logs in a timestamped dir under 32-Kernel/, plus a markdown
-# block (stdout + RESULTS.md) ready to paste as a PERFORMANCE.md version
-# section. The script edits no tracked file.
+# block (stdout + RESULTS.md) whose medians feed a PERFORMANCE.md release
+# row. The script edits no tracked file.
 #
 # Usage:   ./scripts/bench_release_iperf3.sh "<release label>"
 #   stock: IPERF3_BIN=/tmp/iperf3 RTL8196E_IP=192.168.1.x \
@@ -78,7 +78,8 @@ LOG_DIR="${KERNEL_DIR}/test_results_release_iperf3_$(date +%Y%m%d_%H%M%S)"
 # the stack instead of trusting the switch's uncharacterised checksum bits. An
 # isolated same-build A/B in July 2026 priced it at ~2% single-stream and ~4.4%
 # at 8-stream saturation -- a deliberate integrity/throughput trade, documented
-# in the driver's PERFORMANCE.md, DESIGN.md and SPECIFICATIONS.md.
+# in the driver's DESIGN.md and SPECIFICATIONS.md (the A/B itself is in the
+# archived performance record, PERFORMANCE.md "History").
 #
 # So the ~93.5-94 line-rate the old floor encoded is simply no longer reachable
 # by design. Post-v2.23 the shipping kernel sits at 89.5-91.7, and across every

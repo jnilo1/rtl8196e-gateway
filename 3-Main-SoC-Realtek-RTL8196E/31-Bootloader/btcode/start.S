@@ -1,6 +1,4 @@
-#include <asm/asm.h>
-#include <asm/regdef.h>
-#include <asm/mipsregs.h>
+#include "boot_asm.h"
 #include "start.h"
 
 /*
@@ -60,20 +58,20 @@ lab_uart_show:
 	REG32_W(CLKMGR_REG, CLKMGR_DEFAULT)	/* Clock manager, value from start.h */
 	nop
 
-	/* Check system status and configure for DDR1 if needed */
-	REG32_R(SYS_STATUS_REG, t6)
-	nop
-	IF_NEQ(t6, 0x7, rtl_8196E_four)
-	nop
-	IF_NEQ(t6, 0x4, rtl_8196E_four)
-	nop
-	REG32_W(CLKMGR_REG, CLKMGR_MCM_DDR1)	/* RTL8196E MCM DDR1 package */
-	nop
+	/*
+	 * A vendor "RTL8196E MCM DDR1 package" selector used to sit here:
+	 * read SYS_STATUS (0xB800000C), write CLKMGR = 0x0AC8 when it read
+	 * 7 or 4.  Its two guards could not both hold, so the write was
+	 * unreachable (the read and the compares did run).  Removed; CLKMGR
+	 * keeps CLKMGR_DEFAULT.
+	 */
 
-rtl_8196E_four:
-	/* DDR timing configuration */
-	REG32_W(DDR_CFG_REG, BOARD_DDR_REG_1008)	/* per-board, boards/<board>/board.h */
-	/* Set DTR by hw_strap ck_m2x_freq_sel */
+	/*
+	 * DDR controller configuration.  Both values come from the board
+	 * header (boards/<board>/board.h); nothing here reads the hardware
+	 * strap, and nothing later overwrites these two registers.
+	 */
+	REG32_W(DDR_CFG_REG, BOARD_DDR_REG_1008)
 	REG32_W(DDR_TIMING_REG, BOARD_DDR_REG_1004)
 	nop
 	nop
@@ -107,7 +105,13 @@ lab_ddr_cali:
 	/* Copy stage-1.5 payload from flash to RAM                               */
 	/*-------------------------------------------------------------------------*/
 	la	k0, __boot_start
-	la	k1, (__boot_end + 4)
+	la	k1, (__boot_end + 4)	/* one word past the payload: the loop
+					 * copies size + 4 bytes, the extra word
+					 * is whatever flash follows .initrd.
+					 * Harmless, left as inherited.  The bne
+					 * bound needs a payload size that is a
+					 * multiple of 4, which piggy.bin is
+					 * (word-aligned sections). */
 	la	t1, BOOT_ADDR
 
 copy_boot_loop:
@@ -141,6 +145,12 @@ DDR_Auto_Calibration:
 	li	t6, 33				/* R0 = 33 (DQS0 right boundary) */
 	li	t5, 0				/* L1 = 0 (DQS1 left boundary) */
 	li	t7, 33				/* R1 = 33 (DQS1 right boundary) */
+	/*
+	 * Only DQS0 is swept.  t6, t5 and t7 are set here and never read
+	 * (R0 ends up in t8), and DDCR_SHIFT_EXIT applies the DQS0 centre to
+	 * both DQS fields.  Kept as inherited; UART_PRINT_WAIT below relies
+	 * on t5-t7 being dead.
+	 */
 
 	/* Write test pattern to DRAM */
 	sw	v0, 0(t3)			/* DRAM_ADDR = 0x5a5aa5a5 */
@@ -190,8 +200,21 @@ lab_end_DQS0:
 	add	v0, t8, a2			/* v0 = L0 + R0 */
 	srl	v0, v0, 0x1			/* c0 = (L0 + R0) / 2 */
 
+	/*
+	 * L0 == 0: no DQS0 delay read the pattern back, the DRAM does not
+	 * work as configured and the centre computed above is the arbitrary
+	 * (0 + 32) / 2 = 16.  Say so on the console (UART0 is up since
+	 * uart_show) instead of failing silently, then carry on exactly as
+	 * before: applying 16 is the historical behaviour, and nothing here
+	 * can do better without a stage-2.  UART_PRINT_WAIT clobbers t5-t7,
+	 * which hold nothing live (t5/t7 are the never-used DQS1 bounds).
+	 */
+	bnez	a2, DDCR_SHIFT_EXIT		/* L0 != 0: a window was found */
+	nop
+	UART_PRINT_WAIT(ddr_cal_msg)
+
 /*-----------------------------------------------------------------------*/
-/* DDCR_SHIFT_EXIT - Apply DQS0 and DQS1 delay values                   */
+/* DDCR_SHIFT_EXIT - Apply the DQS0 centre to both DQS fields           */
 /*-----------------------------------------------------------------------*/
 DDCR_SHIFT_EXIT:
 	move	t9, v0				/* Save for DQS1 */
@@ -245,4 +268,7 @@ uart_show:
 /*---------------------------------------------------------------------------*/
 boot_msg:
 	.ascii	"\r\nBooting...\r\n\0"
+	.align	4
+ddr_cal_msg:
+	.ascii	"DDR calibration: no DQS window\r\n\0"
 	.align	4

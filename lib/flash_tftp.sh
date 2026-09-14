@@ -21,9 +21,11 @@
 # signature check and is discarded.)
 probe_tftp_wrq() {
     local ip="$1" probe_file rc=0
-    probe_file=$(mktemp)
+    # This tftp client resolves PUT sources relative to its current directory;
+    # a /tmp path is treated as a remote name and never tests the target.
+    probe_file=$(mktemp ./tftp-probe.XXXXXX)
     printf 'X' > "$probe_file"
-    timeout 3 tftp -m binary "$ip" -c put "$probe_file" >/dev/null 2>&1 || rc=$?
+    timeout 3 tftp -m binary "$ip" -c put "${probe_file#./}" >/dev/null 2>&1 || rc=$?
     rm -f "$probe_file"
     [ "$rc" -ne 124 ]
 }

@@ -1,0 +1,340 @@
+{
+ "schema": "rtl8196e-text-layout-v1",
+ "kernel_version": "6.18.51",
+ "toolchain": {
+  "gcc": "mips-lexra-linux-musl-gcc (crosstool-NG 1.28.0.3_a3fef85) 15.2.0",
+  "ld": "GNU ld (crosstool-NG 1.28.0.3_a3fef85) 2.45.1"
+ },
+ "config_sha256": "5bbca60680fd5654525415acda9c93e1a7062ddd8379de4c0415993ade5907a2",
+ "pads_patch_sha256": "7a76e676c3f20b84dedfad7a726574f1e51004d67b380725326e53f29271ff00",
+ "iram": "0x8033c000",
+ "pads": [
+  {
+   "symbol": "__text_pad_0000",
+   "addr": "0x801f8cb8",
+   "size": 244
+  },
+  {
+   "symbol": "__text_pad_0001",
+   "addr": "0x802085ac",
+   "size": 7948
+  },
+  {
+   "symbol": "__text_pad_0002",
+   "addr": "0x8024bdf4",
+   "size": 140
+  },
+  {
+   "symbol": "__text_pad_0003",
+   "addr": "0x8025bae4",
+   "size": 8164
+  },
+  {
+   "symbol": "__text_pad_0004",
+   "addr": "0x80277d84",
+   "size": 8156
+  },
+  {
+   "symbol": "__text_pad_0005",
+   "addr": "0x80282cb4",
+   "size": 8168
+  },
+  {
+   "symbol": "__text_pad_0006",
+   "addr": "0x8028eee0",
+   "size": 8180
+  },
+  {
+   "symbol": "__text_pad_0007",
+   "addr": "0x80311388",
+   "size": 8152
+  }
+ ],
+ "tracked": [
+  {
+   "function": "kmalloc_reserve",
+   "addr": "0x801f9300",
+   "colour": 4864,
+   "size": 316
+  },
+  {
+   "function": "skb_checksum",
+   "addr": "0x801fa664",
+   "colour": 1636,
+   "size": 752
+  },
+  {
+   "function": "skb_segment",
+   "addr": "0x802001a4",
+   "colour": 420,
+   "size": 3128
+  },
+  {
+   "function": "skb_try_coalesce",
+   "addr": "0x801fc1f0",
+   "colour": 496,
+   "size": 1004
+  },
+  {
+   "function": "ip_route_use_hint",
+   "addr": "0x8024f688",
+   "colour": 5768,
+   "size": 348
+  },
+  {
+   "function": "ip_local_deliver",
+   "addr": "0x802524d0",
+   "colour": 1232,
+   "size": 424
+  },
+  {
+   "function": "ip_protocol_deliver_rcu",
+   "addr": "0x80252350",
+   "colour": 848,
+   "size": 384
+  },
+  {
+   "function": "ip_rcv_finish_core",
+   "addr": "0x80251b1c",
+   "colour": 6940,
+   "size": 1344
+  },
+  {
+   "function": "inet_ehashfn",
+   "addr": "0x8025dcd8",
+   "colour": 7384,
+   "size": 184
+  },
+  {
+   "function": "tcp_sendmsg_locked",
+   "addr": "0x802667e8",
+   "colour": 2024,
+   "size": 3416
+  },
+  {
+   "function": "tcp_ack",
+   "addr": "0x802727e4",
+   "colour": 2020,
+   "size": 5056
+  },
+  {
+   "function": "__tcp_transmit_skb",
+   "addr": "0x8027c65c",
+   "colour": 1628,
+   "size": 2896
+  },
+  {
+   "function": "tcp_schedule_loss_probe",
+   "addr": "0x8027c284",
+   "colour": 644,
+   "size": 432
+  },
+  {
+   "function": "tcp_write_xmit",
+   "addr": "0x8027e044",
+   "colour": 68,
+   "size": 4560
+  },
+  {
+   "function": "tcp_add_backlog",
+   "addr": "0x80287fd4",
+   "colour": 8148,
+   "size": 1264
+  },
+  {
+   "function": "tcp_v4_fill_cb",
+   "addr": "0x80284f58",
+   "colour": 3928,
+   "size": 248
+  },
+  {
+   "function": "tcp_v4_rcv",
+   "addr": "0x802884e0",
+   "colour": 1248,
+   "size": 2768
+  },
+  {
+   "function": "tcp4_gro_receive",
+   "addr": "0x80291f80",
+   "colour": 8064,
+   "size": 752
+  },
+  {
+   "function": "tcp_gso_segment",
+   "addr": "0x80291330",
+   "colour": 4912,
+   "size": 1412
+  },
+  {
+   "function": "raw_local_deliver",
+   "addr": "0x802942e4",
+   "colour": 740,
+   "size": 620
+  },
+  {
+   "function": "inet_addr_hash.isra.0",
+   "addr": "0x802a0740",
+   "colour": 1856,
+   "size": 176
+  },
+  {
+   "function": "inet_gso_segment",
+   "addr": "0x802a5218",
+   "colour": 4632,
+   "size": 848
+  },
+  {
+   "function": "fib_validate_source",
+   "addr": "0x802a9990",
+   "colour": 6544,
+   "size": 632
+  },
+  {
+   "function": "__alloc_frozen_pages_noprof",
+   "addr": "0x800ba2ac",
+   "colour": 684,
+   "size": 2060
+  },
+  {
+   "function": "__zone_watermark_ok",
+   "addr": "0x800b8c18",
+   "colour": 3096,
+   "size": 336
+  },
+  {
+   "function": "get_page_from_freelist",
+   "addr": "0x800b8e40",
+   "colour": 3648,
+   "size": 1860
+  },
+  {
+   "function": "__page_frag_alloc_align",
+   "addr": "0x800bb684",
+   "colour": 5764,
+   "size": 484
+  },
+  {
+   "function": "kfree",
+   "addr": "0x800c0ec0",
+   "colour": 3776,
+   "size": 508
+  },
+  {
+   "function": "kmem_cache_free",
+   "addr": "0x800c0cf4",
+   "colour": 3316,
+   "size": 460
+  },
+  {
+   "function": "rtl8196e_poll",
+   "addr": "0x801e02c8",
+   "colour": 712,
+   "size": 1404
+  },
+  {
+   "function": "rtl8196e_start_xmit",
+   "addr": "0x801dfc18",
+   "colour": 7192,
+   "size": 1152
+  },
+  {
+   "function": "rtl8196e_ring_rx_poll",
+   "addr": "0x801e2448",
+   "colour": 1096,
+   "size": 1608
+  },
+  {
+   "function": "__netif_receive_skb_core.constprop.0",
+   "addr": "0x80211f30",
+   "colour": 7984,
+   "size": 1464
+  },
+  {
+   "function": "netif_receive_skb_list_internal",
+   "addr": "0x80212884",
+   "colour": 2180,
+   "size": 540
+  },
+  {
+   "function": "sk_filter_trim_cap",
+   "addr": "0x8022afe4",
+   "colour": 4068,
+   "size": 784
+  },
+  {
+   "function": "dev_gro_receive",
+   "addr": "0x80231108",
+   "colour": 4360,
+   "size": 1592
+  },
+  {
+   "function": "gro_receive_skb",
+   "addr": "0x80231740",
+   "colour": 5952,
+   "size": 228
+  },
+  {
+   "function": "eth_type_trans",
+   "addr": "0x8023a44c",
+   "colour": 1100,
+   "size": 416
+  },
+  {
+   "function": "csum_partial",
+   "addr": "0x8032f3c0",
+   "colour": 5056,
+   "size": 1432
+  },
+  {
+   "function": "__bzero",
+   "addr": "0x803300c0",
+   "colour": 192,
+   "size": 0
+  }
+ ],
+ "sequence_sha256": "de63e38e23d5466935b39509b52ebaecb8a737163ab487994c667f9bc9f87831",
+ "sequence_groups": 15185,
+ "vmlinux_sha256": "eda93a5a5d14608cd519d8f9b0f3e4e3e7c403ce953464459328c5ce39087749",
+ "intent": {
+  "kmalloc_reserve": "6.18.45",
+  "skb_checksum": "6.18.45",
+  "skb_segment": "6.18.45",
+  "skb_try_coalesce": "6.18.45",
+  "ip_route_use_hint": "6.18.45",
+  "ip_local_deliver": "6.18.45",
+  "ip_protocol_deliver_rcu": "6.18.45",
+  "ip_rcv_finish_core": "6.18.45",
+  "inet_ehashfn": "6.18.45",
+  "tcp_sendmsg_locked": "6.18.45",
+  "tcp_ack": "6.18.45",
+  "__tcp_transmit_skb": "6.18.45",
+  "tcp_schedule_loss_probe": "6.18.45",
+  "tcp_write_xmit": "6.18.45",
+  "tcp_add_backlog": "6.18.45",
+  "tcp_v4_fill_cb": "6.18.45",
+  "tcp_v4_rcv": "6.18.45",
+  "tcp4_gro_receive": "6.18.45",
+  "tcp_gso_segment": "6.18.45",
+  "raw_local_deliver": "6.18.45",
+  "inet_addr_hash.isra.0": "6.18.45",
+  "inet_gso_segment": "6.18.45",
+  "fib_validate_source": "6.18.45",
+  "__alloc_frozen_pages_noprof": "6.18.51",
+  "__zone_watermark_ok": "6.18.51",
+  "get_page_from_freelist": "6.18.51",
+  "__page_frag_alloc_align": "6.18.51",
+  "kfree": "6.18.51",
+  "kmem_cache_free": "6.18.51",
+  "rtl8196e_poll": "6.18.51",
+  "rtl8196e_start_xmit": "6.18.51",
+  "rtl8196e_ring_rx_poll": "6.18.51",
+  "__netif_receive_skb_core.constprop.0": "6.18.51",
+  "netif_receive_skb_list_internal": "6.18.51",
+  "sk_filter_trim_cap": "6.18.51",
+  "dev_gro_receive": "6.18.51",
+  "gro_receive_skb": "6.18.51",
+  "eth_type_trans": "6.18.51",
+  "csum_partial": "6.18.51",
+  "__bzero": "6.18.51"
+ }
+}

@@ -1,0 +1,36 @@
+--- a/arch/mips/lib/memcpy.S
++++ b/arch/mips/lib/memcpy.S
+@@ -597,6 +597,33 @@
+ 	.endm
+ 
+ #ifndef CONFIG_HAVE_PLAT_MEMCPY
++	/*
++	 * Give the shared copy core a section of its own, the way
++	 * -ffunction-sections gives one to every C function.  Placement then
++	 * becomes a link-time decision like any other: the linker script
++	 * either leaves it in its slot in .text or pulls it into the on-chip
++	 * I-MEM window, and nothing here needs to know which.  Assembly
++	 * routines otherwise land in the anonymous .text blob, and would be
++	 * the only hot code a placement experiment cannot move -- which on
++	 * this board is precisely the code that matters most.
++	 *
++	 * The section starts here, at memmove, and not at memcpy: memmove
++	 * falls through to __rmemcpy and branches to .L__memcpy inside the
++	 * memcpy body, with 16-bit PC-relative branches.  They are one routine
++	 * with several entry points, and splitting them across sections lets
++	 * the linker move them more than 128 KB apart, which fails the link.
++	 */
++#ifdef CONFIG_RTL8196E_IMEM_DEFAULT_PLACEMENT
++	/*
++	 * the historical policy places this core in I-MEM directly, the way
++	 * the sources did before the campaign named the section; under the
++	 * other policies it stays an ordinary named section that the linker
++	 * script -- or a selection -- is free to place
++	 */
++	.section .iram, "ax"
++#else
++	.section .text.memcpy, "ax"
++#endif
+ 	.align	5
+ LEAF(memmove)
+ EXPORT_SYMBOL(memmove)

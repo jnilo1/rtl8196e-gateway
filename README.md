@@ -99,7 +99,7 @@ PCB photo, the J1 pinout, safe UART wiring, and the complete command sequence.
 | Lidl Silvercrest / Tuya reference board | `lidl` | Linux 6.18 | Default; do not set `BOARD` |
 | Sengled Smart Hub G4 (E39-G8C) | `sengled-e39-g8c` | Linux 6.18 | Board-specific bootloader, kernel, and radio images |
 
-Linux 7.1 is also available as an alternate kernel line. New users should keep
+Linux 7.2 is also available as an alternate kernel line. New users should keep
 the production default, Linux 6.18. Board and kernel choices are explained in
 the [install and upgrade reference](./3-Main-SoC-Realtek-RTL8196E/35-Migration/README.md).
 

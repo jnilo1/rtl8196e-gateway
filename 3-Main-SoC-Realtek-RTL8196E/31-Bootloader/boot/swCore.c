@@ -10,18 +10,16 @@
 
 #include "boot_common.h"
 #include "boot_soc.h"
-#include "eth_api.h"
+#include "boot_net.h"
 #include <rtl_types.h>
-#include <rtl_errno.h>
-#include <rtl8196x/loader.h> //wei edit
-#include <rtl8196x/swCore.h>
-#include <rtl8196x/swTable.h>
+#include "swcore_regs.h"
+#include "swcore.h"
+
+#include "main.h"
 
 #define WRITE_MEM32(addr, val) (*(volatile unsigned int *)(addr)) = (val)
 #define WRITE_MEM16(addr, val) (*(volatile unsigned short *)(addr)) = (val)
 #define READ_MEM32(addr) (*(volatile unsigned int *)(addr))
-
-extern void delay_ms(unsigned int time_ms);
 
 #define RTL8651_ETHER_AUTO_100FULL 0x00
 #define RTL8651_ETHER_AUTO_100HALF 0x01
@@ -58,12 +56,12 @@ static uint32 _rtl8651_asicTableSize[] = {
     3 /*TYPE_RATE_LIMIT_TABLE*/,
 };
 
-static void _rtl8651_asicTableAccessForward(uint32 tableType, uint32 eidx,
-					    void *entryContent_P)
+static int32 _rtl8651_asicTableAccessForward(uint32 tableType, uint32 eidx,
+					     void *entryContent_P)
 {
 	ASSERT_CSP(entryContent_P);
-	while ((READ_MEM32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		; // Wait for command done
+	if (!swcore_wait_mask(SWTACR, ACTION_MASK, ACTION_DONE))
+		return FAILED;
 
 	{
 		register uint32 index;
@@ -76,6 +74,7 @@ static void _rtl8651_asicTableAccessForward(uint32 tableType, uint32 eidx,
 	WRITE_MEM32(SWTAA,
 		    ((uint32)rtl8651_asicTableAccessAddrBase(tableType) +
 		     eidx * RTL8651_ASICTABLE_ENTRY_LENGTH)); // Fill address
+	return SUCCESS;
 }
 
 static int32 _rtl8651_forceAddAsicEntry(uint32 tableType, uint32 eidx,
@@ -85,15 +84,19 @@ static int32 _rtl8651_forceAddAsicEntry(uint32 tableType, uint32 eidx,
 	if (RTL865X_TLU_BUG_FIXED) /* No need to stop HW table lookup process */
 	{			   /* No need to stop HW table lookup process */
 		WRITE_MEM32(SWTCR0, EN_STOP_TLU | READ_MEM32(SWTCR0));
-		while ((READ_MEM32(SWTCR0) & STOP_TLU_READY) == 0)
-			;
+		if (!swcore_wait_mask(SWTCR0, STOP_TLU_READY, STOP_TLU_READY)) {
+			WRITE_MEM32(SWTCR0, ~EN_STOP_TLU & READ_MEM32(SWTCR0));
+			return FAILED;
+		}
 	}
 
-	_rtl8651_asicTableAccessForward(tableType, eidx, entryContent_P);
+	if (_rtl8651_asicTableAccessForward(tableType, eidx, entryContent_P) !=
+	    SUCCESS)
+		goto out_tlu;
 
 	WRITE_MEM32(SWTACR, ACTION_START | CMD_FORCE); // Activate add command
-	while ((READ_MEM32(SWTACR) & ACTION_MASK) != ACTION_DONE)
-		; // Wait for command done
+	if (!swcore_wait_mask(SWTACR, ACTION_MASK, ACTION_DONE))
+		goto out_tlu;
 
 	if (RTL865X_TLU_BUG_FIXED) /* No need to stop HW table lookup process */
 	{
@@ -101,6 +104,11 @@ static int32 _rtl8651_forceAddAsicEntry(uint32 tableType, uint32 eidx,
 	}
 
 	return SUCCESS;
+
+out_tlu:
+	if (RTL865X_TLU_BUG_FIXED)
+		WRITE_MEM32(SWTCR0, ~EN_STOP_TLU & READ_MEM32(SWTCR0));
+	return FAILED;
 }
 
 uint32 rtl8651_filterDbIndex(ether_addr_t *macAddr, uint16 fid)
@@ -144,25 +152,49 @@ static int32 rtl8651_setAsicL2Table(ether_addr_t *mac, uint32 column)
 }
 
 //------------------------------------------------------------------------
-static void _rtl8651_clearSpecifiedAsicTable(uint32 type, uint32 count)
+static int32 _rtl8651_clearSpecifiedAsicTable(uint32 type, uint32 count)
 {
 	struct {
 		uint32 _content[8];
 	} entry;
 	uint32 idx;
 	memset(&entry, 0, sizeof(entry));
-	for (idx = 0; idx < count; idx++) // Write into hardware
-		swTable_addEntry(type, idx, &entry);
+	for (idx = 0; idx < count; idx++) /* Write into hardware */
+		if (swTable_addEntry(type, idx, &entry) != SUCCESS)
+			return FAILED;
+	return SUCCESS;
 }
 
 void FullAndSemiReset(void)
 {
-	/* FIXME: Currently workable for FPGA, may need further modification for
-	 * real chip */
-	REG32(0xb8000010) &= ~(1 << 11); // active_swcore=0
+	REG32(SYS_CLKMANAGE) &= ~(1 << 11); /* active_swcore=0 */
 	__delay(5000);
-	REG32(0xb8000010) |= (1 << 11); // active_swcore=1
+	REG32(SYS_CLKMANAGE) |= (1 << 11); /* active_swcore=1 */
 	__delay(1000);
+}
+
+/**
+ * swCore_quiesce - Stop the switch before the CPU hands off or resets
+ *
+ * A live switch can DMA inbound frames into DRAM during early kernel boot
+ * (or across a watchdog reset, which preserves DRAM and does not reset the
+ * switch) and corrupt it — the intermittent post-flash boot loop.  Turning
+ * the PHY interface off stops new ingress but not an already-armed DMA, so:
+ * stop the CPU-port DMA engine, hard-reset the switch core (the same
+ * active_swcore reset swCore_init() runs on every boot, which aborts any
+ * in-flight transfer), THEN hold the PHY interface off — the reset
+ * re-defaults PCRP, so PHY-off must come after it.  Used by the kernel
+ * hand-off, the post-flash reboot and the `J` command alike.
+ */
+void swCore_quiesce(void)
+{
+	WRITE_MEM32(CPUICR, 0); /* stop CPU-port RX/TX DMA (clears TXCMD|RXCMD) */
+	FullAndSemiReset();	/* hard-reset switch core — flush in-flight DMA */
+	WRITE_MEM32(PCRP0, (READ_MEM32(PCRP0) & (~EnablePHYIf)));
+	WRITE_MEM32(PCRP1, (READ_MEM32(PCRP1) & (~EnablePHYIf)));
+	WRITE_MEM32(PCRP2, (READ_MEM32(PCRP2) & (~EnablePHYIf)));
+	WRITE_MEM32(PCRP3, (READ_MEM32(PCRP3) & (~EnablePHYIf)));
+	WRITE_MEM32(PCRP4, (READ_MEM32(PCRP4) & (~EnablePHYIf)));
 }
 
 /**
@@ -180,12 +212,13 @@ int32 rtl8651_getAsicEthernetPHYReg(uint32 phyId, uint32 regId, uint32 *rData)
 	WRITE_MEM32(MDCIOCR, COMMAND_READ | (phyId << PHYADD_OFFSET) |
 				 (regId << REGADD_OFFSET));
 
-	REG32(GIMR_REG) = REG32(GIMR_REG) | (0x1 << 8); // add by jiawenjian
-	delay_ms(10); // wei add, for 8196C_test chip patch. mdio data read will
-		      // delay 1 mdc clock.
-	do {
-		status = READ_MEM32(MDCIOSR);
-	} while ((status & STATUS) != 0);
+	/* 8196C test-chip patch inherited from the SDK: MDIO read data
+	 * lags one MDC clock.  Needs the timer tick, which download mode
+	 * re-arms before the switch is brought up. */
+	delay_ms(10);
+	if (!swcore_wait_mask(MDCIOSR, STATUS, 0))
+		return FAILED;
+	status = READ_MEM32(MDCIOSR);
 
 	status &= 0xffff;
 	*rData = status;
@@ -206,8 +239,8 @@ int32 rtl8651_setAsicEthernetPHYReg(uint32 phyId, uint32 regId, uint32 wData)
 	WRITE_MEM32(MDCIOCR, COMMAND_WRITE | (phyId << PHYADD_OFFSET) |
 				 (regId << REGADD_OFFSET) | wData);
 
-	while ((READ_MEM32(MDCIOSR) & STATUS) != 0)
-		; /* wait until command complete */
+	if (!swcore_wait_mask(MDCIOSR, STATUS, 0))
+		return FAILED;
 
 	return SUCCESS;
 }
@@ -217,45 +250,20 @@ int32 rtl8651_restartAsicEthernetPHYNway(uint32 port, uint32 phyid)
 	uint32 statCtrlReg0;
 
 	/* read current PHY reg 0 */
-	rtl8651_getAsicEthernetPHYReg(phyid, 0, &statCtrlReg0);
+	if (rtl8651_getAsicEthernetPHYReg(phyid, 0, &statCtrlReg0) != SUCCESS)
+		return FAILED;
 
 	/* enable 'restart Nway' bit */
 	statCtrlReg0 |= RESTART_AUTONEGO;
 
 	/* write PHY reg 0 */
-	rtl8651_setAsicEthernetPHYReg(phyid, 0, statCtrlReg0);
-
-	return SUCCESS;
-}
-
-int32 rtl8651_setAsicFlowControlRegister(uint32 port, uint32 enable,
-					 uint32 phyid)
-{
-	uint32 statCtrlReg4;
-
-	/* Read */
-	rtl8651_getAsicEthernetPHYReg(phyid, 4, &statCtrlReg4);
-
-	if (enable && (statCtrlReg4 & CAPABLE_PAUSE) == 0) {
-		statCtrlReg4 |= CAPABLE_PAUSE;
-	} else if (enable == 0 && (statCtrlReg4 & CAPABLE_PAUSE)) {
-		statCtrlReg4 &= ~CAPABLE_PAUSE;
-	} else
-		return SUCCESS; /* The configuration does not change. Do
-				   nothing. */
-
-	rtl8651_setAsicEthernetPHYReg(phyid, 4, statCtrlReg4);
-
-	/* restart N-way. */
-	rtl8651_restartAsicEthernetPHYNway(port, phyid);
-
-	return SUCCESS;
+	return rtl8651_setAsicEthernetPHYReg(phyid, 0, statCtrlReg0);
 }
 
 //====================================================================
 
-void Set_GPHYWB(unsigned int phyid, unsigned int page, unsigned int reg,
-		unsigned int mask, unsigned int val)
+static int Set_GPHYWB(unsigned int phyid, unsigned int page, unsigned int reg,
+		      unsigned int mask, unsigned int val)
 {
 
 	unsigned int data = 0;
@@ -273,20 +281,27 @@ void Set_GPHYWB(unsigned int phyid, unsigned int page, unsigned int reg,
 		// change page
 
 		if (page >= 31) {
-			rtl8651_setAsicEthernetPHYReg(wphyid, 31, 7);
-			rtl8651_setAsicEthernetPHYReg(wphyid, 30, page);
+			if (rtl8651_setAsicEthernetPHYReg(wphyid, 31, 7) != SUCCESS ||
+			    rtl8651_setAsicEthernetPHYReg(wphyid, 30, page) != SUCCESS)
+				return FAILED;
 		} else {
-			rtl8651_setAsicEthernetPHYReg(wphyid, 31, page);
+			if (rtl8651_setAsicEthernetPHYReg(wphyid, 31, page) != SUCCESS)
+				return FAILED;
 		}
 		if (mask != 0) {
-			rtl8651_getAsicEthernetPHYReg(wphyid, reg, &data);
+			if (rtl8651_getAsicEthernetPHYReg(wphyid, reg, &data) != SUCCESS)
+				return FAILED;
 			data = data & mask;
 		}
-		rtl8651_setAsicEthernetPHYReg(wphyid, reg, data | val);
+		if (rtl8651_setAsicEthernetPHYReg(wphyid, reg, data | val) !=
+		    SUCCESS)
+			return FAILED;
 
 		// switch to page 0
-		rtl8651_setAsicEthernetPHYReg(wphyid, 31, 0);
+		if (rtl8651_setAsicEthernetPHYReg(wphyid, 31, 0) != SUCCESS)
+			return FAILED;
 	}
+	return SUCCESS;
 }
 
 unsigned int Get_P0_PhyMode()
@@ -376,11 +391,15 @@ int Setting_RTL8196E_PHY(void)
 
 	// write page1, reg16, bit[15:13] Iq Current 110:175uA (default 100:
 	// 125uA)
-	Set_GPHYWB(999, 1, 16, 0xffff - (0x7 << 13), 0x6 << 13);
+	if (Set_GPHYWB(999, 1, 16, 0xffff - (0x7 << 13), 0x6 << 13) !=
+	    SUCCESS)
+		return FAILED;
 
 	if (REG32(SYS_ECO_NO) == 0x8196e000) {
 		// disable power saving mode in A-cut only
-		Set_GPHYWB(999, 0, 0x18, 0xffff - (1 << 15), 0 << 15);
+		if (Set_GPHYWB(999, 0, 0x18, 0xffff - (1 << 15), 0 << 15) !=
+		    SUCCESS)
+			return FAILED;
 	}
 	/* B-cut and later,
 	    just increase a little power in long RJ45 cable case for Green
@@ -388,12 +407,19 @@ int Setting_RTL8196E_PHY(void)
 	 */
 	else {
 		// adtune_lb setting
-		Set_GPHYWB(999, 0, 22, 0xffff - (0x7 << 4), 0x4 << 4);
+		if (Set_GPHYWB(999, 0, 22, 0xffff - (0x7 << 4), 0x4 << 4) !=
+		    SUCCESS)
+			return FAILED;
 		// Setting SNR lb and hb
-		Set_GPHYWB(999, 0, 21, 0xffff - (0xff << 0), 0xc2 << 0);
+		if (Set_GPHYWB(999, 0, 21, 0xffff - (0xff << 0), 0xc2 << 0) !=
+		    SUCCESS)
+			return FAILED;
 		// auto bais current
-		Set_GPHYWB(999, 1, 19, 0xffff - (0x1 << 0), 0x0 << 0);
-		Set_GPHYWB(999, 0, 22, 0xffff - (0x1 << 3), 0x0 << 3);
+		if (Set_GPHYWB(999, 1, 19, 0xffff - (0x1 << 0), 0x0 << 0) !=
+		    SUCCESS ||
+		    Set_GPHYWB(999, 0, 22, 0xffff - (0x1 << 3), 0x0 << 3) !=
+		    SUCCESS)
+			return FAILED;
 	}
 
 	/* 100M half duplex enhancement */
@@ -429,15 +455,17 @@ int32 swCore_init()
 	/* Full reset and semreset */
 	FullAndSemiReset();
 
-	Setting_RTL8196E_PHY();
+	if (Setting_RTL8196E_PHY() != SUCCESS)
+		return FAILED;
 
 	/* rtl8651_clearAsicAllTable */
 	REG32(MEMCR) = 0;
 	REG32(MEMCR) = 0x7f;
-	_rtl8651_clearSpecifiedAsicTable(TYPE_MULTICAST_TABLE,
-					 RTL8651_IPMULTICASTTBL_SIZE);
-	_rtl8651_clearSpecifiedAsicTable(TYPE_NETINTERFACE_TABLE,
-					 RTL865XC_NETINTERFACE_NUMBER);
+	if (_rtl8651_clearSpecifiedAsicTable(TYPE_MULTICAST_TABLE,
+					 RTL8651_IPMULTICASTTBL_SIZE) != SUCCESS ||
+	    _rtl8651_clearSpecifiedAsicTable(TYPE_NETINTERFACE_TABLE,
+					 RTL865XC_NETINTERFACE_NUMBER) != SUCCESS)
+		return FAILED;
 	// anson add
 	REG32(PIN_MUX_SEL2) = 0;
 	REG32(PCRP0) &= (0xFFFFFFFF - (0x00000000 | MacSwReset));
@@ -454,11 +482,9 @@ int32 swCore_init()
 	REG32(PCRP4) =
 	    REG32(PCRP4) | (4 << ExtPHYID_OFFSET) | EnablePHYIf | MacSwReset;
 
+	/* Port 0 uses the embedded PHY on every supported board. */
 	P0phymode = 1;
 	P0miimode = 0;
-
-	printf("P0phymode=%02x, %s phy\n", P0phymode,
-	       (P0phymode == 0) ? "external" : "embedded");
 
 	if (P0phymode == 1) // embedded phy
 	{
@@ -469,12 +495,14 @@ int32 swCore_init()
 		REG32(PCRP0) |= (0x06 << ExtPHYID_OFFSET) | MIIcfg_RXER |
 				EnablePHYIf | MacSwReset; // external
 		{
-			int reg;
+			uint32 reg;
 
 			// enable flow control ability
-			rtl8651_getAsicEthernetPHYReg(0x06, 4, &reg);
+			if (rtl8651_getAsicEthernetPHYReg(0x06, 4, &reg) != SUCCESS)
+				return FAILED;
 			reg |= (BIT(10) | BIT(11));
-			rtl8651_setAsicEthernetPHYReg(0x06, 4, reg);
+			if (rtl8651_setAsicEthernetPHYReg(0x06, 4, reg) != SUCCESS)
+				return FAILED;
 		}
 
 		if ((P0miimode == 2) || (P0miimode == 3)) {
@@ -586,10 +614,12 @@ int32 swCore_init()
 	/*PHY FlowControl. Default enable*/
 	for (port = 0; port < MAX_PORT_NUMBER; port++) {
 		/* Set Flow Control capability. */
-		rtl8651_restartAsicEthernetPHYNway(port + 1, port);
+		if (rtl8651_restartAsicEthernetPHYNway(port + 1, port) != SUCCESS)
+			return FAILED;
 	}
 
-	rtl8651_setAsicL2Table((ether_addr_t *)(&eth0_mac), 0);
+	if (rtl8651_setAsicL2Table((ether_addr_t *)(&eth0_mac), 0) != SUCCESS)
+		return FAILED;
 
 	REG32(FFCR) = EN_UNUNICAST_TOCPU |
 		      EN_UNMCAST_TOCPU; // rx broadcast and unicast packet

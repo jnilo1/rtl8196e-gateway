@@ -36,8 +36,12 @@ and jumps to it.
    - `0xb8001040 = 0x3FFFFF80` then `0x7FFFFF80` (MPMR power save).
    - `0xb8001050 = 0x50800000` (DDCR base).
    - `0xb8000010 = 0x00000b08` (CLKMGR).
-   - If `0xb800000c == 0x7` or `0x4`, set `0xb8000010 = 0x00000ac8`
-     (RTL8196E MCM DDR1 package).
+   - The vendor code then read `0xb800000c` (system status) to select
+     `0xb8000010 = 0x00000ac8` for the "RTL8196E MCM DDR1 package" when it
+     read 7 or 4; its two `IF_NEQ` guards required both values at once, so
+     the write was unreachable while the read and the compares did run.
+     The selector was removed (audit C1-a, 2026-09-12): the clock manager
+     keeps `CLKMGR_DEFAULT` on every board, which is what always happened.
    - `0xb8001008 = 0x90E36920` (DDR1 32MB @ 193MHz).
    - `0xb8001004 = 0x54480000`.
    - `0xb8000048`: set bit 23, clear bits 22:23 first.

@@ -9,7 +9,7 @@
 #   ./build_nano.sh [version]
 #
 # Examples:
-#   ./build_nano.sh              # Default version (9.0)
+#   ./build_nano.sh              # Default version (9.2)
 #   ./build_nano.sh 7.2          # Specific version
 #
 # J. Nilo - Dec 2025
@@ -22,7 +22,7 @@ USERDATA_PART="${SCRIPT_DIR}/.."
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # Parse version argument
-VERSION="${1:-9.0}"
+VERSION="${1:-9.2}"
 MAJOR_VERSION="${VERSION%%.*}"
 SOURCE_DIR="${SCRIPT_DIR}/nano-${VERSION}"
 INSTALL_DIR="${USERDATA_PART}/skeleton/usr/bin"

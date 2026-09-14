@@ -56,7 +56,7 @@ install and upgrade entry point.
 | --- | --- | --- |
 | [30-Backup-Restore](./30-Backup-Restore/README.md) | Full-flash backup, split, restore | Before flashing or during recovery |
 | [31-Bootloader](./31-Bootloader/README.md) | DRAM bring-up, TFTP, auto-flash, `boothold` | Working on boot or recovery |
-| [32-Kernel](./32-Kernel/README.md) | Linux 6.18/7.1, devicetree, platform drivers | Building or modifying Linux |
+| [32-Kernel](./32-Kernel/README.md) | Linux 6.18/7.2, devicetree, platform drivers | Building or modifying Linux |
 | [33-Rootfs](./33-Rootfs/README.md) | BusyBox, Dropbear, read-only base | Modifying core userspace |
 | [34-Userdata](./34-Userdata/README.md) | Persistent config, init scripts, applications | Operating or extending services |
 | [35-Migration](./35-Migration/README.md) | Script and compatibility reference | Advanced install/upgrade cases |
@@ -67,8 +67,8 @@ The full image contains board-specific bootloader and kernel files:
 
 | `BOARD` | Hardware | Kernels |
 | --- | --- | --- |
-| `lidl` (default) | Lidl Silvercrest / Tuya reference board | 6.18 default, 7.1 alternate |
-| `sengled-e39-g8c` | Sengled Smart Hub G4 | 6.18 default, 7.1 alternate |
+| `lidl` (default) | Lidl Silvercrest / Tuya reference board | 6.18 default, 7.2 alternate |
+| `sengled-e39-g8c` | Sengled Smart Hub G4 | 6.18 default, 7.2 alternate |
 
 Rootfs and userdata are shared across boards and kernel lines. Never flash a
 full image for the wrong board: the bootloader initializes DRAM with
@@ -85,7 +85,7 @@ Examples:
 BOARD=sengled-e39-g8c ./flash_install_rtl8196e.sh <gateway-ip>
 
 # Alternate kernel line
-KERNEL=7.1 ./flash_install_rtl8196e.sh <gateway-ip>
+KERNEL=7.2 ./flash_install_rtl8196e.sh <gateway-ip>
 ```
 
 Run those commands from the repository root. A stock gateway requires the
@@ -162,7 +162,7 @@ Build the complete RTL8196E side:
 cd 3-Main-SoC-Realtek-RTL8196E
 ./build_rtl8196e.sh
 BOARD=sengled-e39-g8c ./build_rtl8196e.sh
-KERNEL=7.1 ./build_rtl8196e.sh
+KERNEL=7.2 ./build_rtl8196e.sh
 ```
 
 Or work in a component directory:
@@ -181,7 +181,7 @@ changing bootloader, kernel, rootfs, or userdata behaviour.
 
 - Realtek RTL8196E, 400 MHz Lexra RLX4181
 - 32 MiB RAM on Lidl, 64 MiB on Sengled G4, and 16 MiB SPI NOR
-- Linux 6.18 production line and Linux 7.1 alternate line
+- Linux 6.18 production line and Linux 7.2 alternate line
 - modern devicetree platform support and custom Ethernet/UART/SPI/GPIO drivers
 - BusyBox + musl read-only rootfs
 - Dropbear SSH

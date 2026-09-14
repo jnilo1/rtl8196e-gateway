@@ -8,9 +8,9 @@ LINE="${1:-}"
 MANIFEST="${2:-}"
 
 case "$LINE" in
-	6.18) VERSION=6.18.45 ;;
-	7.1) VERSION=7.1.9 ;;
-	*) echo "usage: $0 <6.18|7.1> <selection-manifest.json>" >&2; exit 2 ;;
+	6.18) VERSION=6.18.51 ;;
+	7.2) VERSION=7.2.5 ;;
+	*) echo "usage: $0 <6.18|7.2> <selection-manifest.json>" >&2; exit 2 ;;
 esac
 [ -f "$MANIFEST" ] || { echo "manifest not found: $MANIFEST" >&2; exit 2; }
 MANIFEST="$(realpath "$MANIFEST")"

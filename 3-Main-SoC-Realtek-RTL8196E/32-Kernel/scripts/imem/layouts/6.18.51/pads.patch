@@ -1,0 +1,118 @@
+--- /dev/null
++++ b/net/core/pad_skbuff.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0000,"ax",@progbits
++	.globl __text_pad_0000
++	.type __text_pad_0000,@function
++__text_pad_0000:
++	.space 244
++	.size __text_pad_0000, .-__text_pad_0000
+--- /dev/null
++++ b/net/core/pad_dev.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0001,"ax",@progbits
++	.globl __text_pad_0001
++	.type __text_pad_0001,@function
++__text_pad_0001:
++	.space 7948
++	.size __text_pad_0001, .-__text_pad_0001
+--- /dev/null
++++ b/net/ipv4/pad_route.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0002,"ax",@progbits
++	.globl __text_pad_0002
++	.type __text_pad_0002,@function
++__text_pad_0002:
++	.space 140
++	.size __text_pad_0002, .-__text_pad_0002
+--- /dev/null
++++ b/net/ipv4/pad_inet_hashtables.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0003,"ax",@progbits
++	.globl __text_pad_0003
++	.type __text_pad_0003,@function
++__text_pad_0003:
++	.space 8164
++	.size __text_pad_0003, .-__text_pad_0003
+--- /dev/null
++++ b/net/ipv4/pad_tcp_output.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0004,"ax",@progbits
++	.globl __text_pad_0004
++	.type __text_pad_0004,@function
++__text_pad_0004:
++	.space 8156
++	.size __text_pad_0004, .-__text_pad_0004
+--- /dev/null
++++ b/net/ipv4/pad_tcp_ipv4.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0005,"ax",@progbits
++	.globl __text_pad_0005
++	.type __text_pad_0005,@function
++__text_pad_0005:
++	.space 8168
++	.size __text_pad_0005, .-__text_pad_0005
+--- /dev/null
++++ b/net/ipv4/pad_tcp_offload.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0006,"ax",@progbits
++	.globl __text_pad_0006
++	.type __text_pad_0006,@function
++__text_pad_0006:
++	.space 8180
++	.size __text_pad_0006, .-__text_pad_0006
+--- /dev/null
++++ b/net/pad_lib.S
+@@ -0,0 +1,6 @@
++	.section .text.__text_pad_0007,"ax",@progbits
++	.globl __text_pad_0007
++	.type __text_pad_0007,@function
++__text_pad_0007:
++	.space 8152
++	.size __text_pad_0007, .-__text_pad_0007
+--- a/net/core/Makefile
++++ b/net/core/Makefile
+@@ -3,13 +3,13 @@
+ # Makefile for the Linux networking core.
+ #
+ 
+-obj-y := sock.o request_sock.o skbuff.o datagram.o stream.o scm.o \
++obj-y := sock.o request_sock.o pad_skbuff.o skbuff.o datagram.o stream.o scm.o \
+ 	 gen_stats.o gen_estimator.o net_namespace.o secure_seq.o \
+ 	 flow_dissector.o
+ 
+ obj-$(CONFIG_SYSCTL) += sysctl_net_core.o
+ 
+-obj-y		     += dev.o dev_api.o dev_addr_lists.o dst.o netevent.o \
++obj-y		     += pad_dev.o dev.o dev_api.o dev_addr_lists.o dst.o netevent.o \
+ 			neighbour.o rtnetlink.o utils.o link_watch.o filter.o \
+ 			sock_diag.o dev_ioctl.o tso.o sock_reuseport.o \
+ 			fib_notifier.o xdp.o flow_offload.o gro.o \
+--- a/net/ipv4/Makefile
++++ b/net/ipv4/Makefile
+@@ -3,14 +3,14 @@
+ # Makefile for the Linux TCP/IP (INET) layer.
+ #
+ 
+-obj-y     := route.o inetpeer.o protocol.o \
++obj-y     := pad_route.o route.o inetpeer.o protocol.o \
+ 	     ip_input.o ip_fragment.o ip_forward.o ip_options.o \
+-	     ip_output.o ip_sockglue.o inet_hashtables.o \
++	     ip_output.o ip_sockglue.o pad_inet_hashtables.o inet_hashtables.o \
+ 	     inet_timewait_sock.o inet_connection_sock.o \
+-	     tcp.o tcp_input.o tcp_output.o tcp_timer.o tcp_ipv4.o \
++	     tcp.o tcp_input.o pad_tcp_output.o tcp_output.o tcp_timer.o pad_tcp_ipv4.o tcp_ipv4.o \
+ 	     tcp_minisocks.o tcp_cong.o tcp_metrics.o tcp_fastopen.o \
+ 	     tcp_rate.o tcp_recovery.o tcp_ulp.o \
+-	     tcp_offload.o tcp_plb.o datagram.o raw.o udp.o udplite.o \
++	     pad_tcp_offload.o tcp_offload.o tcp_plb.o datagram.o raw.o udp.o udplite.o \
+ 	     udp_offload.o arp.o icmp.o devinet.o af_inet.o igmp.o \
+ 	     fib_frontend.o fib_semantics.o fib_trie.o fib_notifier.o \
+ 	     inet_fragment.o ping.o ip_tunnel_core.o gre_offload.o \
+--- a/net/Makefile
++++ b/net/Makefile
+@@ -80,3 +80,4 @@
+ obj-$(CONFIG_MCTP)		+= mctp/
+ obj-$(CONFIG_NET_HANDSHAKE)	+= handshake/
+ obj-$(CONFIG_NET_SHAPER)	+= shaper/
++obj-y += pad_lib.o

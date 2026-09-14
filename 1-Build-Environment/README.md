@@ -163,7 +163,7 @@ radio.
 ```bash
 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
 BOARD=sengled-e39-g8c ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
-KERNEL=7.1 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
+KERNEL=7.2 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
 ```
 
 Reference: [RTL8196E Linux system](../3-Main-SoC-Realtek-RTL8196E/README.md).

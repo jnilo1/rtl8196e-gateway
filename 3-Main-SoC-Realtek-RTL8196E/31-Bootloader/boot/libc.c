@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * libc.c - C library: UART, string, printf, CLI tools, strtol
+ * libc.c - C library: string, printf, CLI line editor, strtol
  *
  * RTL8196E stage-2 bootloader
  *
@@ -8,10 +8,13 @@
  * Copyright (c) 2024-2026 J. Nilo
  */
 
-#include <ctype.h>
-#include <limits.h>
 #include "boot_common.h"
 #include <stdarg.h>
+
+/* No <limits.h> in a freestanding build: the compiler's own bounds. */
+#define LONG_MAX __LONG_MAX__
+#define LONG_MIN (-LONG_MAX - 1L)
+#define ULONG_MAX (2UL * LONG_MAX + 1UL)
 #include "boot_soc.h"
 #include "boot_net.h"
 #include "monitor.h"
@@ -39,6 +42,25 @@ char *strchr(const char *s, int c)
  *
  * Return: number of characters (not including the NUL terminator)
  */
+/**
+ * strcmp - Compare two strings
+ *
+ * Return: 0 when equal, the difference of the first differing bytes
+ * (as unsigned char) otherwise
+ */
+int strcmp(const char *cs, const char *ct)
+{
+	unsigned char c1, c2;
+
+	do {
+		c1 = *cs++;
+		c2 = *ct++;
+		if (c1 != c2)
+			return c1 - c2;
+	} while (c1);
+	return 0;
+}
+
 size_t strlen(const char *s)
 {
 	const char *sc;
@@ -75,23 +97,6 @@ int memcmp(const void *cs, const void *ct, size_t count)
 		if ((res = *su1 - *su2) != 0)
 			break;
 	return res;
-}
-
-char *strstr(const char *s1, const char *s2)
-{
-	int l1, l2;
-
-	l2 = strlen(s2);
-	if (!l2)
-		return (char *)s1;
-	l1 = strlen(s1);
-	while (l1 >= l2) {
-		l1--;
-		if (!memcmp(s1, s2, l2))
-			return (char *)s1;
-		s1++;
-	}
-	return NULL;
 }
 
 /* ===== Command line tools (io/ctool.c) ===== */
@@ -277,8 +282,6 @@ int Hex2Val(char *HexStr, unsigned long *PVal)
 
 /* ===== Printf and friends (io/misc.c) ===== */
 
-int SprintF(char *buf, const char *fmt, ...);
-
 #ifdef RAMTEST_TRACE
 static inline void ramtest_uart_putc(char c)
 {
@@ -313,12 +316,6 @@ struct print_ctx {
 	void *arg;
 	int count;
 };
-
-static void emit_buf(void *arg, char c)
-{
-	char **p = (char **)arg;
-	*(*p)++ = c;
-}
 
 static void emit_console(void *arg, char c)
 {
@@ -487,19 +484,6 @@ static int vprintf_console(const char *fmt, va_list ap)
 	return vprintf_internal(&ctx, fmt, ap);
 }
 
-int vsprintf(char *buf, const char *fmt, va_list ap)
-{
-	struct print_ctx ctx;
-	char *p = buf;
-	int ret;
-
-	ctx.emit = emit_buf;
-	ctx.arg = &p;
-	ret = vprintf_internal(&ctx, fmt, ap);
-	*p = '\0';
-	return ret;
-}
-
 /**
  * prom_printf - Print a formatted string to the serial console
  * @fmt: printf-style format string
@@ -524,23 +508,6 @@ int dprintf(const char *fmt, ...)
 	int ret;
 	va_start(ap, fmt);
 	ret = vprintf_console(fmt, ap);
-	va_end(ap);
-	return ret;
-}
-
-/**
- * SprintF - Format a string into a buffer
- * @buf: output buffer
- * @fmt: printf-style format string
- *
- * Return: number of characters written (not including NUL)
- */
-int SprintF(char *buf, const char *fmt, ...)
-{
-	int ret;
-	va_list ap;
-	va_start(ap, fmt);
-	ret = vsprintf(buf, fmt, ap);
 	va_end(ap);
 	return ret;
 }
@@ -591,15 +558,6 @@ void ddump(unsigned char *pData, int len)
 		dprintf("\n\r");
 		i += 16;
 	}
-}
-
-void delay_ms(unsigned int time_ms)
-{
-	unsigned int preTime;
-
-	preTime = get_timer_jiffies();
-	while (get_timer_jiffies() - preTime < time_ms / 10)
-		;
 }
 
 /* ===== strtoul (io/strtoul.c) ===== */
@@ -658,8 +616,6 @@ unsigned long int strtoul(const char *nptr, char **endptr, int base)
 }
 
 /* ===== strtol (io/strtol.c) ===== */
-
-extern unsigned long strtoul(const char *nptr, char **endptr, int base);
 
 #define ABS_LONG_MIN 2147483648UL
 /**

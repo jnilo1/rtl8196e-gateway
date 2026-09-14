@@ -1,10 +1,10 @@
-RTL8196E Gateway - v4.4.0
-J. Nilo - 2026-09-10
+RTL8196E Gateway - v4.5.0
+J. Nilo - 2026-09-14
 ---
 crosstool-NG 1.28.0 (gcc 15.2.0 + binutils 2.45.1)
 musl 1.2.6
-linux 6.18.45
+linux 6.18.51
 busybox 1.38.0
 dropbear 2026.94
-nano 9.0 (ncurses 6.6)
-otbr-agent v2026.07.0 (2026-07-01)
+nano 9.2 (ncurses 6.6)
+otbr-agent v2026.09.0 (2026-09-01)

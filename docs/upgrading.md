@@ -31,6 +31,13 @@ Confirm that the resulting `fullflash.bin` is 16,777,216 bytes. The upgrade
 script preserves normal configuration, but a full backup also covers recovery
 from interrupted power, a wrong image, or an unexpected flash failure.
 
+The backup script also writes a small CRC trailer into the image (the last
+16 bytes of the bootloader partition). Bootloader V3.1 and later check it before
+writing anything and refuse a corrupted or modified image; older bootloaders and
+older backups are unaffected. If a restore is refused with `CRC trailer
+MISMATCH`, take a fresh backup, or re-sign a file you trust with
+`lib/fullflash_crc.sh write fullflash.bin`.
+
 > **Upgrading from firmware older than v3.0 with a non-default radio?** Stop
 > here and read the
 > [legacy radio migration notes](../3-Main-SoC-Realtek-RTL8196E/35-Migration/README.md#pre-v30--v3x--non-default-radio-configurations).
@@ -136,13 +143,13 @@ for that case.
 
 ## Alternate kernel line
 
-Linux 6.18 is the production default. Experienced users can select Linux 7.1:
+Linux 6.18 is the production default. Experienced users can select Linux 7.2:
 
 ```bash
-KERNEL=7.1 ./flash_install_rtl8196e.sh -y <gateway-ip>
+KERNEL=7.2 ./flash_install_rtl8196e.sh -y <gateway-ip>
 ```
 
-For Sengled, set both `BOARD=sengled-e39-g8c` and `KERNEL=7.1`. Kernel selection
+For Sengled, set both `BOARD=sengled-e39-g8c` and `KERNEL=7.2`. Kernel selection
 does not change the EFR32 application.
 
 ## Verify the upgrade

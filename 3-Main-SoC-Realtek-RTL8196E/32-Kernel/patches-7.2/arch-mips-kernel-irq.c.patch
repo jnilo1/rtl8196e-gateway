@@ -1,0 +1,24 @@
+--- a/arch/mips/kernel/irq.c
++++ b/arch/mips/kernel/irq.c
+@@ -26,6 +26,12 @@
+ #include <linux/atomic.h>
+ #include <linux/uaccess.h>
+ 
++#if defined(CONFIG_RTL8196E_IMEM) && defined(CONFIG_RTL8196E_IMEM_DEFAULT_PLACEMENT)
++#define __iram_hotpath __attribute__((section(".iram")))
++#else
++#define __iram_hotpath
++#endif
++
+ void *irq_stack[NR_CPUS];
+ 
+ /*
+@@ -100,7 +106,7 @@
+  * SMP cross-CPU interrupts have their own specific
+  * handlers).
+  */
+-asmlinkage void __irq_entry do_IRQ(unsigned int irq)
++asmlinkage void __iram_hotpath do_IRQ(unsigned int irq)
+ {
+ 	irq_enter();
+ 	check_stack_overflow();

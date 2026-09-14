@@ -45,33 +45,23 @@
 #ifndef _RTL_TYPES_H
 #define _RTL_TYPES_H
 
-#include <limits.h>
+#include <stdint.h>
+
+/* The Realtek names of the fixed-width types, as the switch code spells them. */
+typedef uint32_t uint32;
+typedef int32_t int32;
+typedef uint16_t uint16;
+typedef uint8_t uint8;
+typedef int8_t int8;
 
 /*
- * Internal names for basic integral types.  Omit the typedef if
- * not possible for a machine/compiler combination.
+ * Error codes the switch driver and libc return: BSD numbering, as the
+ * Realtek switch code has always used it; nothing outside the loader sees them.
  */
-
-typedef unsigned long long uint64;
-typedef long long int64;
-typedef unsigned int uint32;
-typedef int int32;
-typedef unsigned short uint16;
-typedef short int16;
-typedef unsigned char uint8;
-typedef char int8;
-
-#define UINT32_MAX UINT_MAX
-#define INT32_MIN INT_MIN
-#define INT32_MAX INT_MAX
-#define UINT16_MAX USHRT_MAX
-#define INT16_MIN SHRT_MIN
-#define INT16_MAX SHRT_MAX
-#define UINT8_MAX UCHAR_MAX
-#define INT8_MIN SCHAR_MIN
-#define INT8_MAX SCHAR_MAX
-
-typedef uint32 ipaddr_t;
+#define EEXIST 17     /* Entry exists */
+#define EINVAL 22     /* Invalid argument */
+#define ERANGE 34     /* Result out of range */
+#define ECOLLISION 88 /* Table entry collision */
 
 typedef struct {
 	uint16 mac47_32;
@@ -84,11 +74,7 @@ typedef struct ether_addr_s {
 	uint8 octet[6];
 } ether_addr_t;
 
-#include "rtl_depend.h"
 
-#ifndef NULL
-#define NULL 0
-#endif
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -103,26 +89,17 @@ typedef struct ether_addr_s {
 #define FAILED -1
 #endif
 
-#define CLEARBITS(a, b) ((a) &= ~(b))
-#define SETBITS(a, b) ((a) |= (b))
-#define ISSET(a, b) (((a) & (b)) != 0)
-#define ISCLEARED(a, b) (((a) & (b)) == 0)
-
-#ifndef max
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-#endif /* max */
 
 #ifndef min
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #endif /* min */
 
 #define ASSERT_CSP(x)                                                          \
-	if (!(x)) {                                                            \
-		dprintf("\nAssertion fail at file");                            \
-		while (1)                                                      \
-			;                                                      \
-	}
+	do {                                                                   \
+		if (!(x))                                                      \
+			fatal("assertion failed: " #x);                        \
+	} while (0)
 
-extern int dprintf(const char *fmt, ...);
+extern void fatal(const char *why) __attribute__((noreturn));
 
 #endif

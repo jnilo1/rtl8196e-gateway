@@ -6,7 +6,7 @@
 #
 # Usage:
 #   ./flash_kernel.sh                         # flash lidl / 6.18 (default)
-#   KERNEL=7.1 ./flash_kernel.sh              # flash the 7.1 line
+#   KERNEL=7.2 ./flash_kernel.sh              # flash the 7.2 line
 #   BOARD=sengled-e39-g8c ./flash_kernel.sh   # flash the Sengled G4 image
 #   ./flash_kernel.sh -i <file>               # flash an explicit file
 #   ./flash_kernel.sh 192.168.1.6             # override target IP (positional)
@@ -16,7 +16,7 @@
 #
 # Environment variables (optional, for non-interactive use):
 #   BOARD=<name>          Board image (default: lidl; also sengled-e39-g8c)
-#   KERNEL=<line>         Kernel line (default: 6.18; also 7.1)
+#   KERNEL=<line>         Kernel line (default: 6.18; also 7.2)
 #   CONFIRM=y             Skip the "Proceed?" prompt
 #   BOOT_IP=<addr>        Bootloader-mode address when no positional IP is
 #                         given. Falls back to gateway.env, then to an address

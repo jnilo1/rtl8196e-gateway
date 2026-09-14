@@ -45,7 +45,8 @@ Then check, in order:
 
 1. the host opened the correct `/dev/ttyUSB*` device;
 2. the adapter uses 3.3 V TTL logic, not RS-232 or 5 V logic;
-3. ground is common;
+3. ground is common — a loose ground can let the gateway's output through
+   while blocking everything you send;
 4. TX and RX are crossed;
 5. the temporary contacts or solder joints are reliable;
 6. another program is not already holding the serial device.
@@ -82,10 +83,18 @@ Never connect the adapter's 3.3 V while the official supply is plugged in, or
 two sources end up driving the same rail.
 
 If `Esc` still has no effect, suspect the host-to-gateway direction of the link
-rather than the bootloader. Let Linux boot and try typing at the serial console.
-If output arrives but nothing you type has any effect, check the pin 4 contact:
-it carries only what you transmit, so it can be bad while the banner still reads
-perfectly.
+rather than the bootloader. Use a terminal that echoes the characters it sends,
+so you can see whether anything leaves the host at all; without that you cannot
+tell a dead transmit path from a bootloader that is ignoring you. Then let Linux
+boot and try typing at the serial console.
+
+If output arrives but nothing you type has any effect, the fault is in the
+wiring, and the ground is the first thing to check rather than the last. A loose
+ground produces exactly this one-directional failure: the gateway keeps talking
+and the console stays perfectly readable, while nothing you send is received.
+Make the J1 pin 2 contact tight, or bond it to the Ethernet shield, before
+suspecting anything else. Only then look at the pin 4 contact, which carries
+only what you transmit and so can be bad while the banner still reads perfectly.
 
 On a gateway already running this project's firmware, serial entry is usually
 unnecessary: use the [upgrade guide](./upgrading.md), which invokes `boothold`

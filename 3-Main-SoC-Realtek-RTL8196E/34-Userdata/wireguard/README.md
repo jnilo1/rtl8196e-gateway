@@ -76,7 +76,7 @@ optional/usr/sbin/wg-link              built by build_wireguard.sh
 
 ```sh
 cd ../../32-Kernel
-./build_kernel.sh                       # or KERNEL=7.1, BOARD=sengled-e39-g8c
+./build_kernel.sh                       # or KERNEL=7.2, BOARD=sengled-e39-g8c
 ../flash_remote.sh -y kernel <gateway-ip>
 ```
 

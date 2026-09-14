@@ -18,12 +18,24 @@ def main():
     ap.add_argument("--incumbent", default="I")
     args = ap.parse_args()
     rows = list(csv.DictReader(open(os.path.join(args.dir, "sweep.tsv")), delimiter="\t"))
+    # Floors of the harness's environment rule (protocol.txt); a point under
+    # them is a path fault that the harness must have archived and replayed,
+    # never a measurement to judge. Absent (older runs): the defaults.
+    floors = {"env_tx_floor": 40.0, "env_rx_floor": 60.0}
+    try:
+        for line in open(os.path.join(args.dir, "protocol.txt")):
+            k, _, v = line.strip().partition("=")
+            if k in floors: floors[k] = float(v)
+    except FileNotFoundError:
+        pass
     failures = []
     points = {}
     for row in rows:
         key = (row["label"], int(row["round"]))
         if key in points: failures.append(f"duplicate point {key}")
         points[key] = row
+        if float(row["tx"]) < floors["env_tx_floor"] or float(row["rx"]) < floors["env_rx_floor"]:
+            failures.append(f"point below environment floors at {key}: tx {row['tx']} rx {row['rx']}")
         if row["tcpflush"] != "yes": failures.append(f"tcpflush failed at {key}")
         if row["retr_unparsed"] != "0" or row["retr"] != "0": failures.append(f"retransmission defect at {key}")
         if not row["err_delta"].startswith("hard=0 "): failures.append(f"hard counter defect at {key}: {row['err_delta']}")
@@ -32,6 +44,8 @@ def main():
         for label in (args.candidate, args.incumbent):
             if (label, round_no) not in points: failures.append(f"missing {(label, round_no)}")
     for odd in range(1, 13, 2):
+        if any((label, r) not in points for label in (args.candidate, args.incumbent) for r in (odd, odd + 1)):
+            continue  # already reported as missing: a partial run fails the protocol, it must not crash the judge
         a = sorted(((int(points[(label, odd)]["pos"]), label) for label in (args.candidate, args.incumbent)))
         b = sorted(((int(points[(label, odd + 1)]["pos"]), label) for label in (args.candidate, args.incumbent)))
         if [label for _, label in a] != list(reversed([label for _, label in b])):
@@ -40,7 +54,8 @@ def main():
     if len(running) != 1: failures.append(f"quiesce differs across points: {len(running)} sets")
     result = {"protocol_pass": not failures, "protocol_failures": failures,
               "points": len(rows), "reversed_order_pairs": 6,
-              "quiesce_uniform": len(running) == 1}
+              "quiesce_uniform": len(running) == 1,
+              "env_floors": floors}
     if failures:
         result["decision"] = "INCONCLUSIVE"
     else:

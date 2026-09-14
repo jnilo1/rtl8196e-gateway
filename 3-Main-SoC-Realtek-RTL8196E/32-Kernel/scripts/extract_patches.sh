@@ -86,7 +86,8 @@ done
 # Derive KERNEL_MAJOR from KERNEL_VERSION ("6.18" → "6.x", "6.18.2" → "6.x")
 KERNEL_MAJOR="${KERNEL_VERSION%%.*}.x"
 KERNEL_TARBALL="linux-${KERNEL_VERSION}.tar.xz"
-KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}/${KERNEL_TARBALL}"
+KERNEL_BASE_URL="${KERNEL_MIRROR:-https://cdn.kernel.org/pub/linux/kernel}"   # KERNEL_MIRROR: see build_kernel.sh
+KERNEL_URL="${KERNEL_BASE_URL%/}/v${KERNEL_MAJOR}/${KERNEL_TARBALL}"
 VANILLA_DIR="linux-${KERNEL_VERSION}"
 PATCHED_DIR_DEFAULT="linux-${KERNEL_VERSION}-rtl8196e"
 PATCHED_DIR="${PATCHED_DIR:-$PATCHED_DIR_DEFAULT}"

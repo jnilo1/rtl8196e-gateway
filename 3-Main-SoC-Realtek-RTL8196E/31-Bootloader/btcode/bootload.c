@@ -1,7 +1,14 @@
 #include "../boot/include/ver.h"
+#include "../boot/include/stage1_checks.h"
 typedef unsigned int UINT32;
-#define DECOMP_ADDR 0x80400000
+#define DECOMP_ADDR STAGE2_LOAD_ADDR
 #define LZMA_STATUS_ADDR 0x80300000
+
+/* UART0, brought up by stage-1: 32-bit registers, data in byte lane 3. */
+#define UART_THR 0xB8002000
+#define UART_LSR 0xB8002014
+#define UART_LSR_TX_EMPTY 0x60000000 /* THRE | TEMT */
+#define REG32(a) (*(volatile UINT32 *)(a))
 
 /* Convert little-endian 32-bit to CPU endian (boot is big-endian). */
 #define ___swab32(x)                                                           \
@@ -26,6 +33,27 @@ void *memcpy(void *dest, const void *src, int count)
 extern char __boot_start[];
 extern char __boot_end[];
 void boot_entry(void);
+
+static void uart_puts(const char *s)
+{
+	for (; *s; s++) {
+		while (!(REG32(UART_LSR) & UART_LSR_TX_EMPTY))
+			;
+		REG32(UART_THR) = (UINT32)(unsigned char)*s << 24;
+	}
+}
+
+/*
+ * The embedded stream cannot be inflated: there is no stage-2 to run, and
+ * returning to piggy.S would continue into the code that follows the call.
+ * Report on the console and stop; only a reset leaves this loop.
+ */
+static void boot_fail(const char *why)
+{
+	uart_puts(why);
+	for (;;)
+		;
+}
 
 // Flush D-cache (write-back + invalidate) then invalidate I-cache.
 static void flush_cache_all(void)
@@ -76,6 +104,8 @@ void boot_entry(void)
 		CLzmaDecoderState state; /* it's about 24-80 bytes structure, if
 					    int is 32-bit */
 		unsigned char properties[LZMA_PROPERTIES_SIZE];
+		if (inLen <= LZMA_PROPERTIES_SIZE + 8)
+			boot_fail("LZMA: truncated stream\r\n");
 		compressedSize = (SizeT)(inLen - (LZMA_PROPERTIES_SIZE + 8));
 
 		memcpy(properties, startBuf, sizeof(properties));
@@ -88,26 +118,34 @@ void boot_entry(void)
 		outSizeHigh = le32_to_cpu(outSizeHigh);
 
 		outSizeFull = (SizeT)outSize;
-		if (outSizeHigh != 0 || (UInt32)(SizeT)outSize != outSize) {
-			// printf("LZMA: Too big uncompressed stream\n");
-			return;
-		}
+		if (outSizeHigh != 0 || (UInt32)(SizeT)outSize != outSize ||
+		    !stage1_lzma_output_ok(outSize))
+			boot_fail("LZMA: bad stream size\r\n");
 		startBuf += 8;
 
 		/* Decode LZMA properties and allocate memory */
 		if (LzmaDecodeProperties(&state.Properties, properties,
 					 LZMA_PROPERTIES_SIZE) !=
-		    LZMA_RESULT_OK) {
-			// puts("LZMA: Incorrect stream properties\n");
-			return;
-		}
+		    LZMA_RESULT_OK)
+			boot_fail("LZMA: bad stream properties\r\n");
+
+		/*
+		 * The probability array is not allocated: it lives at
+		 * LZMA_STATUS_ADDR, 1 MiB below the decompression target, and
+		 * its size follows the stream's lc/lp bytes (32 KiB for the
+		 * lc=3/lp=0 the build uses).  A stream compressed with other
+		 * settings could push it over the target; refuse it rather
+		 * than decode on top of the array.
+		 */
+		if (LzmaGetNumProbs(&state.Properties) * sizeof(CProb) >
+		    DECOMP_ADDR - LZMA_STATUS_ADDR)
+			boot_fail("LZMA: workspace too large\r\n");
 		state.Probs = (CProb *)((void *)(LZMA_STATUS_ADDR));
 
 		res = LzmaDecode(&state, startBuf, compressedSize, &inProcessed,
 				 outBuf, outSizeFull, &outProcessed);
-		if (res != 0) {
-			return;
-		}
+		if (res != 0 || outProcessed != outSizeFull)
+			boot_fail("LZMA: decode failed\r\n");
 	}
 	flush_cache_all();
 	jumpF = (void (*)(void))(DECOMP_ADDR);

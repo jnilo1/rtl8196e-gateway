@@ -32,7 +32,6 @@
 
 #ifndef SizeT
 #ifdef _LZMA_SYSTEM_SIZE_T
-#include <stddef.h>
 #define SizeT size_t
 #else
 #define SizeT UInt32

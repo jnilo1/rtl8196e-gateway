@@ -1,0 +1,10 @@
+--- a/drivers/net/ethernet/Kconfig
++++ b/drivers/net/ethernet/Kconfig
+@@ -166,6 +166,7 @@
+ source "drivers/net/ethernet/realtek/Kconfig"
+ source "drivers/net/ethernet/renesas/Kconfig"
+ source "drivers/net/ethernet/rocker/Kconfig"
++source "drivers/net/ethernet/rtl8196e-eth/Kconfig"
+ source "drivers/net/ethernet/samsung/Kconfig"
+ source "drivers/net/ethernet/seeq/Kconfig"
+ source "drivers/net/ethernet/sgi/Kconfig"

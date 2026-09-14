@@ -33,7 +33,7 @@ static uint32 memleft; /* memory left */
  */
 void free(void *ap)
 {
-	HEADER *nxt, *prev, *f;
+	HEADER *nxt, *prev = NULL, *f;
 
 	ASSERT_CSP(ap);
 	ASSERT_CSP(frhd);
@@ -173,9 +173,7 @@ void *malloc(uint32 nbytes) /* bytes to allocate */
 			*/
 		}
 	}
-	printf("\nAllocation Failed!");
-	while (1)
-		;
+	fatal("out of heap memory");
 }
 
 /**

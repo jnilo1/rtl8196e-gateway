@@ -1,0 +1,24 @@
+--- a/kernel/irq/chip.c
++++ b/kernel/irq/chip.c
+@@ -21,6 +21,12 @@
+ 
+ #include "internals.h"
+ 
++#if defined(CONFIG_RTL8196E_IMEM) && defined(CONFIG_RTL8196E_IMEM_DEFAULT_PLACEMENT)
++#define __iram_hotpath __attribute__((section(".iram")))
++#else
++#define __iram_hotpath
++#endif
++
+ static irqreturn_t bad_chained_irq(int irq, void *dev_id)
+ {
+ 	WARN_ONCE(1, "Chained irq %d should not call an action\n", irq);
+@@ -686,7 +692,7 @@
+  * the associated handler has acknowledged the device, so the interrupt
+  * line is back to inactive.
+  */
+-void handle_level_irq(struct irq_desc *desc)
++void __iram_hotpath handle_level_irq(struct irq_desc *desc)
+ {
+ 	guard(raw_spinlock)(&desc->lock);
+ 	mask_ack_irq(desc);

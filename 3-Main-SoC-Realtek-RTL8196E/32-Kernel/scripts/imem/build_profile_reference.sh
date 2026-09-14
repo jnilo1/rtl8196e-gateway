@@ -8,10 +8,10 @@ KERNEL_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL_LINE="${1:-}"
 
 case "$KERNEL_LINE" in
-    6.18) KERNEL_VERSION=6.18.45 ;;
-    7.1)  KERNEL_VERSION=7.1.9 ;;
+    6.18) KERNEL_VERSION=6.18.51 ;;
+    7.2)  KERNEL_VERSION=7.2.5 ;;
     *)
-        echo "usage: $0 {6.18|7.1}" >&2
+        echo "usage: $0 {6.18|7.2}" >&2
         exit 2
         ;;
 esac

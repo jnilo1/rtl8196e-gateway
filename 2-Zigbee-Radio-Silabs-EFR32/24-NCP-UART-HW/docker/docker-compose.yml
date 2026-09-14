@@ -43,7 +43,7 @@ services:
   # Zigbee2MQTT with Ember adapter — connects to NCP via the kernel UART bridge
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: ghcr.io/koenkk/zigbee2mqtt:2.7.2
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.1
     environment:
       - TZ=Europe/Paris
     volumes:
@@ -59,7 +59,11 @@ services:
   # Home Assistant — integrates with Z2M via MQTT autodiscovery
   homeassistant:
     container_name: homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
+    # Pinned to a release tag for reproducibility. 2026.9.2 == stable as of
+    # 2026-09-14, digest:
+    #   sha256:a1bc133af84ee6505fe2c266d9805b7c75b780dfdc188edfee3b11e8f3cd8efe
+    # Switch to :stable to follow upstream instead.
+    image: ghcr.io/home-assistant/home-assistant:2026.9.2
     network_mode: host
     restart: unless-stopped
     privileged: true

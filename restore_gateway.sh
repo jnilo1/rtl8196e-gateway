@@ -22,6 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Host-side gateway address resolution — see lib/gwconf.sh.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib/gwconf.sh"
+# CRC trailer check before sending — see lib/fullflash_crc.sh.
+. "${SCRIPT_DIR}/lib/fullflash_crc.sh"
 # Bootloader-mode address: flag > BOOT_IP env > gateway.env > the bootloader's
 # compiled default. NOT derived from this host's LAN: the gateway is already at a
 # bootloader prompt and cannot be told to move (lib/gwconf.sh, gwconf_cold_boot_ip).
@@ -137,6 +139,17 @@ echo "========================================="
 echo ""
 echo "Image:       $IMAGE ($(numfmt --to=iec-i --suffix=B "$img_size"))"
 echo "MD5:         $(md5sum "$IMAGE" | awk '{print $1}')"
+# The loader would refuse a bad trailer only after the 16 MiB upload; say so
+# now.  A mismatch means the file changed after its trailer was written,
+# foreign data means the tail is neither blank nor a trailer: take a fresh
+# backup, or `lib/fullflash_crc.sh write FILE` if you trust the file.
+# (if/else, not $?: the script runs under set -e and 1 = "no trailer" is fine.)
+if ff_note=$(ffcrc_check "$IMAGE"); then ff_rc=0; else ff_rc=$?; fi
+echo "CRC trailer: $ff_note"
+if [ "$ff_rc" -eq 2 ] || [ "$ff_rc" -eq 3 ]; then
+    echo "Error: the bootloader would refuse this image; not sending it." >&2
+    exit 1
+fi
 echo "Boot IP:     $BOOT_IP"
 echo "Bootloader:  $BOOTLOADER_TYPE"
 echo ""

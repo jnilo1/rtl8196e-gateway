@@ -102,7 +102,7 @@ after_move:
 #ifndef RAMTEST_TRACE
 	/* Setup stack pointer */
 	la	$28, init_task_union
-	addiu	t0, $28, KERNEL_STACK_SIZE - 32
+	addiu	t0, $28, SYS_STACK_SIZE - 32
 	subu	sp, t0, 4 * SZREG
 	sw	t0, kernelsp
 #endif
@@ -158,7 +158,7 @@ after_move:
 	/* RAMTEST: deferred stack init + kseg1-to-kseg0 transition           */
 	/*---------------------------------------------------------------------*/
 	la	$28, init_task_union
-	addiu	t0, $28, KERNEL_STACK_SIZE - 32
+	addiu	t0, $28, SYS_STACK_SIZE - 32
 	subu	sp, t0, 4 * SZREG
 	sw	t0, kernelsp
 
@@ -215,7 +215,7 @@ after_move:
 	mtc0	$0, $20			/* CCTL - Cache Control Register */
 	nop
 	nop
-	li	$8, 0x00000020		/* CCTL_IMEM_OFF: invalidate IRAM */
+	li	$8, CCTL_IMEM_OFF		/* invalidate IRAM */
 	mtc0	$8, $20
 	nop
 	nop
@@ -226,7 +226,7 @@ after_move:
 	mtc0	$0, $20			/* CCTL */
 	nop
 	nop
-	li	$8, 0x00000202		/* CCTL_DCACHE_WBINVAL | CCTL_ICACHE_INVAL */
+	li	$8, CCTL_DCACHE_WBINVAL | CCTL_ICACHE_INVAL
 	mtc0	$8, $20
 	nop
 	nop
@@ -252,7 +252,7 @@ after_move:
 	mtc0	$0, $20			/* CCTL */
 	nop
 	nop
-	li	$8, 0x00000010		/* CCTL_IMEM_FILL: refill IRAM from flash */
+	li	$8, CCTL_IMEM_FILL		/* refill IRAM from flash */
 	mtc0	$8, $20
 	nop
 	nop

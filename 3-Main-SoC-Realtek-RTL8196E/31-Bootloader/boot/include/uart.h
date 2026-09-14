@@ -1,7 +1,7 @@
 #ifndef _UART_H_
 #define _UART_H_
 
-#include <asm/rtl_soc.h>
+#include "boot_soc.h"
 
 #define BAUD_RATE 38400
 
@@ -10,6 +10,9 @@
  * but belongs to the next command. -1 means empty.
  */
 extern int g_uart_peek;
+
+/* Hook run while serial_inc() waits for input (NULL = plain spin). */
+extern void (*g_uart_idle)(void);
 
 /* Low-level UART I/O */
 void serial_outc(char c);

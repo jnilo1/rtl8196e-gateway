@@ -8,6 +8,12 @@ KERNEL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REPO_ROOT="$(git -C "$KERNEL_DIR" rev-parse --show-toplevel)"
 # shellcheck disable=SC1091
 . "$REPO_ROOT/lib/gwconf.sh"
+# "Environment invalid" round rule (ENV_TX_FLOOR, ENV_RX_FLOOR, ENV_MAX_REPLAYS),
+# shared with bench_history_sweep.sh: a round where candidate AND incumbent both
+# read far below the band is a path fault — archived and re-measured in the
+# same order, never fed to the judge.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../bench_env.sh"
 
 TARGET=""; CANDIDATE=""; INCUMBENT=""; OUTPUT=""; EXPECT=""
 DURATION=20; GAP=10; REPS=3; ROUNDS=12; STABILIZE=45
@@ -136,16 +142,20 @@ for pair in $(seq 1 6); do
 done
 printf 'label\tround\ttx\trx\tuname\tpos\tretr\ttcpflush\tretr_unparsed\terr_delta\tstill_running\n' >"$OUTPUT/sweep.tsv"
 sha256sum "$CANDIDATE" "$INCUMBENT" "$LOCAL_IPERF" >"$OUTPUT/SHA256SUMS"
-printf 'target=%s\nexpect=%s\nduration=%s\ngap=%s\nreps=%s\nrounds=%s\n' \
-	"$TARGET" "$EXPECT" "$DURATION" "$GAP" "$REPS" "$ROUNDS" >"$OUTPUT/protocol.txt"
+printf 'target=%s\nexpect=%s\nduration=%s\ngap=%s\nreps=%s\nrounds=%s\nenv_tx_floor=%s\nenv_rx_floor=%s\nenv_max_replays=%s\n' \
+	"$TARGET" "$EXPECT" "$DURATION" "$GAP" "$REPS" "$ROUNDS" "$ENV_TX_FLOOR" "$ENV_RX_FLOOR" "$ENV_MAX_REPLAYS" >"$OUTPUT/protocol.txt"
 
-point=0
-while IFS=$'\t' read -r round first second; do
-	[ "$round" = round ] && continue
+# Measure one round (both labels, in plan order) into ROUND_ROWS (sweep.tsv
+# lines) and ROUND_VALS ("tx<TAB>rx" per point); nothing is written to
+# sweep.tsv until the round has passed the environment rule.
+measure_round() {
+	local round="$1" first="$2" second="$3" label image pos uname_r still tcpflush before after errors retr retr_bad tx rx rep
+	local -a txv rxv
+	ROUND_ROWS=(); ROUND_VALS=()
 	for label in "$first" "$second"; do
 		point=$((point+1)); [ "$label" = C ] && image="$CANDIDATE" || image="$INCUMBENT"
 		pos=1; [ "$label" = "$second" ] && pos=2
-		say "point $point/24: round $round position $pos label $label"
+		say "point $point/$total: round $round position $pos label $label"
 		flash_image "$image" || { echo "flash/boot failure" >&2; exit 1; }
 		uname_r="$(remote uname -r)"; case "$uname_r" in "$EXPECT"*) ;; *) echo "unexpected release: $uname_r" >&2; exit 1;; esac
 		sleep "$STABILIZE"
@@ -169,11 +179,52 @@ while IFS=$'\t' read -r round first second; do
 		after="$(net_snapshot)"; errors="$(counter_delta "$before" "$after")"
 		check_dmesg "$OUTPUT/dmesg/${round}-${label}-after.txt" || { echo "kernel warning after point" >&2; exit 1; }
 		tx="$(median3 "${txv[@]}")"; rx="$(median3 "${rxv[@]}")"
-		printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-			"$label" "$round" "$tx" "$rx" "$uname_r" "$pos" "$retr" "$tcpflush" "$retr_bad" "$errors" "$still" >>"$OUTPUT/sweep.tsv"
-		say "point $point/24 recorded (aggregate remains sealed)"
+		ROUND_ROWS+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+			"$label" "$round" "$tx" "$rx" "$uname_r" "$pos" "$retr" "$tcpflush" "$retr_bad" "$errors" "$still")")
+		ROUND_VALS+=("$(printf '%s\t%s' "$tx" "$rx")")
+		say "point $point/$total measured (aggregate remains sealed)"
 	done
-done <"$OUTPUT/plan.tsv"
+}
+
+# >>> round loop — extracted verbatim by test_confirm_env_invalid.sh (keep the markers)
+# Move the raw logs and dmesg of an environment-invalid round out of the way
+# so the re-measurement reuses the same tags; keep everything for the record.
+archive_round() {
+	local round="$1" attempt="$2" dir row
+	dir="$OUTPUT/env-invalid/round${round}-attempt${attempt}"
+	mkdir -p "$dir/raw" "$dir/dmesg"
+	mv "$OUTPUT"/raw/"${round}"-*.log "$dir/raw/" 2>/dev/null || true
+	mv "$OUTPUT"/dmesg/"${round}"-*.txt "$dir/dmesg/" 2>/dev/null || true
+	[ -s "$OUTPUT/env-invalid/sweep.tsv" ] || head -1 "$OUTPUT/sweep.tsv" >"$OUTPUT/env-invalid/sweep.tsv"
+	for row in "${ROUND_ROWS[@]}"; do printf '%s\tattempt%s\n' "$row" "$attempt"; done >>"$OUTPUT/env-invalid/sweep.tsv"
+}
+
+point=0; total=24; replays=0
+# The plan is read on fd 3: every remote() call runs ssh, which reads the
+# loop's stdin and would swallow the remaining rounds after the first one.
+while IFS=$'\t' read -r -u 3 round first second; do
+	[ "$round" = round ] && continue
+	attempt=0
+	while :; do
+		attempt=$((attempt+1))
+		measure_round "$round" "$first" "$second"
+		if printf '%s\n' "${ROUND_VALS[@]}" | env_all_below; then
+			archive_round "$round" "$attempt"
+			say "round $round: ENVIRONMENT INVALID — both images below TX $ENV_TX_FLOOR / RX $ENV_RX_FLOOR Mbit/s at once (path fault, not a kernel difference); archived under env-invalid/, not fed to the judge"
+			if [ "$replays" -lt "$ENV_MAX_REPLAYS" ]; then
+				replays=$((replays+1)); total=$((total+2))
+				say "round $round re-measured in the same order ($first then $second), replay $replays/$ENV_MAX_REPLAYS"
+				sleep "$GAP"; continue
+			fi
+			echo "round $round: $ENV_MAX_REPLAYS replay(s) already spent — the path is not usable, stopping (no verdict)" >&2
+			exit 1
+		fi
+		printf '%s\n' "${ROUND_ROWS[@]}" >>"$OUTPUT/sweep.tsv"
+		break
+	done
+done 3<"$OUTPUT/plan.tsv"
+printf 'env_replays=%s\n' "$replays" >>"$OUTPUT/protocol.txt"
+# <<< round loop
 
 python3 "$SCRIPT_DIR/confirm_results.py" --dir "$OUTPUT" --candidate C --incumbent I
 say "confirmation complete: $OUTPUT"

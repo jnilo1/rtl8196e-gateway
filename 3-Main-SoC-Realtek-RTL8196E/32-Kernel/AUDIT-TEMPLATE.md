@@ -20,7 +20,7 @@ the opening table is the single authoritative statement of the current state.
 | **Last fully audited baseline** | vX.Y |
 | **Post-baseline changes** | none, or an explicit list and review level |
 | **Validation state** | static / build / target / field evidence and pending gates |
-| **Maintained kernels** | Linux 6.18 and/or 7.1 |
+| **Maintained kernels** | Linux 6.18 and/or 7.2 |
 | **Current finding registry** | section link |
 
 ## Audit-pass ledger

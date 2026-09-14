@@ -1,0 +1,24 @@
+--- a/kernel/irq/irqdesc.c
++++ b/kernel/irq/irqdesc.c
+@@ -17,6 +17,12 @@
+ #include <linux/sysfs.h>
+ #include <linux/string_choices.h>
+ 
++#if defined(CONFIG_RTL8196E_IMEM) && defined(CONFIG_RTL8196E_IMEM_DEFAULT_PLACEMENT)
++#define __iram_hotpath __attribute__((section(".iram")))
++#else
++#define __iram_hotpath
++#endif
++
+ #include "internals.h"
+ 
+ /*
+@@ -689,7 +695,7 @@
+  * 		This function must be called from an IRQ context with irq regs
+  * 		initialized.
+   */
+-int generic_handle_irq(unsigned int irq)
++int __iram_hotpath generic_handle_irq(unsigned int irq)
+ {
+ 	return handle_irq_desc(irq_to_desc(irq));
+ }

@@ -260,9 +260,18 @@ def main():
     sites, scanned, absent = dynamic_sites(
         os.path.dirname(os.path.abspath(__file__)), args.cross, reference,
         os.path.join(build, ".config"))
+    exclusions = {}
+    exclude_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exclude.tsv")
+    if os.path.exists(exclude_path):
+        for line in open(exclude_path, encoding="utf-8"):
+            if line.strip() and not line.startswith("#") and "\t" in line:
+                name, reason = line.rstrip("\n").split("\t", 1)
+                exclusions[name] = reason
     eligible = []
     for candidate in aggregate.values():
         reasons = []
+        if candidate["section"] in exclusions:
+            reasons.append("excluded by scripts/imem/exclude.tsv: " + exclusions[candidate["section"]])
         if candidate["size"] <= 0 or candidate["size"] > BUDGET:
             reasons.append("section does not fit the I-MEM budget")
         if "G" in candidate["flags"]:

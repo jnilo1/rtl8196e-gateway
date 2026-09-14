@@ -19,7 +19,7 @@
 # together they reproduce the historical single-image (kernel-6.18.img) path, so
 # a Lidl user who sets neither BOARD nor KERNEL gets exactly the old behaviour.
 KERNEL_IMG_KNOWN_BOARDS="lidl sengled-e39-g8c"
-KERNEL_IMG_KNOWN_KERNELS="6.18 7.1"
+KERNEL_IMG_KNOWN_KERNELS="6.18 7.2"
 KERNEL_IMG_DEFAULT_BOARD="lidl"
 KERNEL_IMG_DEFAULT_KERNEL="6.18"
 

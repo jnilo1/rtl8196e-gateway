@@ -1,5 +1,5 @@
 #!/bin/bash
-# lint_patches.sh — from-clean dry-run of a kernel line's patch set (6.18 or 7.1).
+# lint_patches.sh — from-clean dry-run of a kernel line's patch set (6.18 or 7.2).
 #
 # Why this exists: build_kernel.sh only feeds patches-6.18/*.patch to patch(1)
 # when it extracts a *fresh* tree (`if [ ! -f "$BUILD_DIR/Makefile" ]`). Every
@@ -18,7 +18,7 @@
 # across point releases — none of which a reused-tree build can see.
 #
 # Usage:  ./lint_patches.sh             # 6.18 line (default)
-#         KERNEL=7.1 ./lint_patches.sh  # 7.1 line
+#         KERNEL=7.2 ./lint_patches.sh  # 7.2 line
 # Exit:   0 = all patches apply clean from-clean; 1 = at least one would fail.
 #
 # Zero project deps: only patch, wget, tar, xz. Caches the tarball next to
@@ -60,7 +60,8 @@ fi
 
 PATCHES_DIR="${SCRIPT_DIR}/patches-${KERNEL_MAJOR_MINOR}"
 TARBALL="linux-${KERNEL_VERSION}.tar.xz"
-URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}/${TARBALL}"
+KERNEL_BASE_URL="${KERNEL_MIRROR:-https://cdn.kernel.org/pub/linux/kernel}"   # KERNEL_MIRROR: see build_kernel.sh
+URL="${KERNEL_BASE_URL%/}/v${KERNEL_MAJOR}/${TARBALL}"
 CACHE="${SCRIPT_DIR}/${TARBALL}"
 
 if [ ! -d "$PATCHES_DIR" ]; then

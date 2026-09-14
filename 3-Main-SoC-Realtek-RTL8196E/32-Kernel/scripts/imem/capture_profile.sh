@@ -27,7 +27,7 @@ Usage: capture_profile.sh [options] [gateway-ip]
 Options:
   --duration SEC       Duration of each capture (default: 180)
   --output DIR         Output directory
-  --expect RELEASE     Required uname -r prefix, for example 6.18.45-
+  --expect RELEASE     Required uname -r prefix, for example 6.18.51-
   --stabilize SEC      Delay after SSH first answers (default: 45)
 EOF
 }

@@ -1,0 +1,18 @@
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -1962,6 +1962,15 @@
+ 	help
+ 	  Hardware driver for the Ralink SoC Watchdog Timer.
+ 
++config RTL819X_WDT
++	tristate "Realtek RTL819x hardware watchdog"
++	depends on REALTEK || COMPILE_TEST
++	select WATCHDOG_CORE
++	help
++	  Hardware watchdog driver for the Realtek RTL819x family
++	  (RTL8196E and compatible). Drives the SoC's countdown
++	  timer at sysc offset 0x311C.
++
+ config GXP_WATCHDOG
+ 	tristate "HPE GXP watchdog support"
+ 	depends on ARCH_HPE_GXP || COMPILE_TEST

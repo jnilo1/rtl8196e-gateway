@@ -1,31 +1,23 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * inthandler.S - Interrupt and watchpoint handler trampolines
+ * inthandler.S - Interrupt handler trampoline
  *
  * RTL8196E stage-2 bootloader
  *
  * IRQ_finder: saves all registers (SAVE_ALL), reads the GIMR/GISR
  * interrupt status, and calls irq_dispatch() in irq.c.
  *
- * handle_watch: saves context and calls do_watch() for Lexra
- * watchpoint exceptions.
- *
  * Copyright (c) 2009-2020 Realtek Semiconductor Corp.
  * Copyright (c) 2024-2026 J. Nilo
  */
 
-#include <asm/asm.h>
-#include <asm/mipsregs.h>
-#include <asm/regdef.h>
-#include <asm/stackframe.h>
-#include <asm/rtl8181.h>
+#include "boot_asm.h"
+#include "boot_soc.h"
 
 /*===========================================================================*/
 /* IRQ_finder - Interrupt dispatcher                                         */
 /*===========================================================================*/
 /*
- * Cyrus Tsai
- *
  * This INT dispatch routine is triggered via Exception->CAUSE:EXC-CODE:INT
  */
 
@@ -71,22 +63,22 @@
 	/* Isolate allowed interrupts and check for pending IRQs              */
 	/*---------------------------------------------------------------------*/
 	and	a0, a1			/* Isolate allowed ones */
-	and	a0, 0xffffffff		/* Extend to 32 interrupts (2007/3/23) */
 	bne	t2, zero, handle_it	/* Pending interrupt -> jump to handler */
 	nop
 	nop
 
 	/*---------------------------------------------------------------------*/
-	/* Spurious interrupt - should never reach here                       */
+	/* Spurious interrupt: the line dropped between the exception being  */
+	/* committed and the read of Cause (a level source acknowledged by   */
+	/* the main loop).  Count it and return; nothing needs servicing.    */
 	/*---------------------------------------------------------------------*/
-1:
-	li	t0, (UART_THR + 0xb8000000)
-	li	t1, 'm'			/* 'm' indicates unexpected interrupt */
+	la	t0, g_spurious_irq
+	lw	t1, 0(t0)
 	nop
-	sb	t1, 0(t0)		/* Print 'm' on UART */
-	nop
-	nop
-	b	1b			/* Hang forever */
+	addiu	t1, t1, 1
+	sw	t1, 0(t0)
+	move	a1, sp
+	RESTORE_ALL_AND_RET
 	nop
 	nop
 
@@ -107,34 +99,8 @@ handle_it:
 
 	.set	at
 
-/*===========================================================================*/
-/* handle_watch - Lexra watchpoint exception handler                         */
-/*===========================================================================*/
-/*
- * jwsyu
- *
- * This is watch asm front-end for Lexra 5281/4281
- */
-
-	.text
-	.set	noreorder
-	.set	noat
-	.align	5
-
-	NESTED(handle_watch, PT_SIZE, sp)
-
-	/*---------------------------------------------------------------------*/
-	/* Save context and call watchpoint handler                           */
-	/*---------------------------------------------------------------------*/
-	SAVE_ALL
-	CLI
-	move	a0, sp			/* Pass stack pointer as argument */
-	jal	do_watch		/* Call C watchpoint handler */
-	nop
-	nop
-
-	RESTORE_ALL_AND_RET		/* Restore context and return */
-	nop
-	nop
-
-	END(handle_watch)
+	.data
+	.globl	g_spurious_irq
+	.align	2
+g_spurious_irq:
+	.word	0

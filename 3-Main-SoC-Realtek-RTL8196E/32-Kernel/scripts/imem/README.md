@@ -30,7 +30,7 @@ Build the empty profiling reference:
 
 ```sh
 scripts/imem/build_profile_reference.sh 6.18
-scripts/imem/build_profile_reference.sh 7.1
+scripts/imem/build_profile_reference.sh 7.2
 ```
 
 Capture two idle, two TX and two RX profiles with
@@ -90,3 +90,66 @@ code identity and linked I-MEM occupation against the exact reference map. The
 dynamic-code scanner independently rejects any runtime patch site in the I-MEM
 window. A failed check reopens the campaign; it cannot be waived by the
 optimizer.
+
+## Text placement (link-level pads)
+
+Between two point releases the text of the SDRAM-resident hot path shears: a
+few dozen upstream size changes ahead of `net/` in link order move every hot
+function by a different amount, so their I-cache colours (address modulo
+8 KiB on this 2-way, 512-set, 16-byte-line cache) all change at once. On
+6.18.45 → 6.18.51 that alone cost 2.1 Mbit/s TX with identical hot code and an
+identical I-MEM policy (see the 13/09/2026 memo in the maintainer's archive).
+
+A **text layout** compensates it without touching any function: never-executed
+pad objects (`pad_*.S`, one `.space` in `.text.__text_pad_NNNN`, global symbol,
+kept alive by `-u`) inserted in `obj-y` order ahead of chosen objects so that
+each zone of hot functions lands either on the previous release's colours or
+exactly on its own. Layouts live under `layouts/<KERNEL_VERSION>/`:
+
+- `pads.patch` — the pad objects and their Makefile insertions; applied by
+  `build_kernel.sh` after `patches-<line>/` to **production builds only**
+  (it follows the release I-MEM policy: profiling and empty-window builds have
+  another layout and are never padded); roots derived from the patch;
+- `tracked.tsv` — the hot functions whose colours the layout is about, with
+  the intended reference (`6.18.45` restored, `6.18.51` kept);
+- `layout.json` — recorded by `text_layout.py record` from the accepted build:
+  toolchain strings, sha256 of the built `.config` and of `pads.patch`, every
+  pad's address and size, every tracked function's address, a sha256 of the
+  whole address-ordered text sequence (aliases grouped, pads excluded), and
+  the proof that nothing references a pad.
+
+Every production build then runs `text_layout.py verify` after the I-MEM
+relink and **fails** on any drift of those facts — the guard is the build's,
+not CI's: a drift means the benchmarked layout is not the one being shipped.
+`TEXT_LAYOUT_DISABLE=1` builds the unpadded kernel (the comparison baseline);
+`TEXT_LAYOUT_RECORD=1` skips the guard for the build that `record` will read.
+A tree prepared with or without a layout must be rebuilt with `clean` to switch.
+
+Proposing a layout for a new release is `propose_text_pads.py` — a proposal,
+never an acceptance: it compares the two production `vmlinux`, reads the link
+map for object ownership, classifies each zone by its TX/RX sample ratio
+(default: restore the old colours when TX/RX ≥ 2, keep the new ones
+otherwise — the 6.18.51 lesson is that recolouring `csum_partial`, GRO and
+`eth_type_trans` buys TX with RX), and writes `proposal.json` + a candidate
+`pads.patch`. Then: clean build with the patch under `patches-<line>/zz-*.patch`
+and `TEXT_PAD_ROOTS`, `text_layout.py record` (which refuses references into
+pads), colour check, and a paired bench against the unpadded build
+(`bench_history_sweep.sh`, then `confirm_candidates.sh` before shipping).
+The sweep flags a round where *every* image reads far below the band at once
+(TX < `ENV_TX_FLOOR`, default 40, or RX < `ENV_RX_FLOOR`, default 60) as
+`env-invalid`: a path fault, not a kernel difference. Its rows are tagged in
+`sweep.tsv`, archived in `env-invalid.tsv`, excluded from the analysis, and
+the round is replayed with the same order (at most `ENV_MAX_REPLAYS`, 2).
+`confirm_candidates.sh` applies the same rule (shared `scripts/bench_env.sh`)
+per round of candidate + incumbent: an invalid round is archived under
+`env-invalid/` with its raw logs and dmesg, re-measured in the same order,
+and only the 24 valid points reach `confirm_results.py`, which itself refuses
+any point under the floors recorded in `protocol.txt`. The boundary cases
+(one replay, replays exhausted, a single image under the floor) are covered
+host-only by `test_confirm_env_invalid.sh`, which runs the harness's round
+loop verbatim with a stubbed measurement.
+Intra-object shears (upstream code changed between two hot functions of one
+file) are reported and cannot be padded; leave them.
+
+Known knobs: `--delta-rule weighted|first` (which delta an object with two
+takes), `--group-by delta|object`, `--tx-rx-ratio`, `--min-share`.

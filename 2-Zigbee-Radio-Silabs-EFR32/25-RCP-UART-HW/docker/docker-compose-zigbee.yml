@@ -88,7 +88,7 @@ services:
   # Zigbee2MQTT - web interface on port 8080
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: ghcr.io/koenkk/zigbee2mqtt:2.7.2
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.1
     environment:
       - TZ=Europe/Paris
     volumes:

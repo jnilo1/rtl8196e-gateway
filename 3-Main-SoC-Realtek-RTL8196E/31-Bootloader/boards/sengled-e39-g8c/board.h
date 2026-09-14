@@ -20,6 +20,9 @@
  */
 #define BOARD_DRAM_TOP_KSEG1 0xA4000000
 
+/* Stage-1.5 may only decompress this much stage-2 code at 0x80400000. */
+#define BOARD_STAGE2_MAX_SIZE 0x00100000
+
 /*
  * DDR controller bring-up values, written by btcode/start.S before any
  * DRAM access (nothing overwrites them later — these two macros ARE the

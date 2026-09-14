@@ -190,7 +190,9 @@ that match what it actually flashed.
 ## 5. Back up the original flash
 
 Flashing the Linux system replaces the complete 16 MiB SPI flash. Keep a backup
-outside the repository so the original firmware can be restored later.
+outside the repository so the original firmware can be restored later. Images
+built or backed up by the scripts carry a CRC trailer that the V3.1 bootloader
+checks before writing; see [Upgrading](upgrading.md) if a restore is refused.
 
 ### If you have SSH access to the stock firmware
 

@@ -1,56 +1,24 @@
 # Top-level Makefile -- RTL8196E bootloader
 #
-# Two-stage build: first compiles the stage-2 bootloader (boot/) into a
-# raw binary (boot.img), then wraps it with the stage-1 LZMA loader
-# (btcode/) to produce the final flash image.
-#
-# Two variants are built by default:
-#   - boot:    production flash image (stays in download mode after boot TFTP)
-#   - ramtest: RAM-test image with read-back verification of BSS clears
-#
-# boot/ must be cleaned between variants because the Makefiles do not
-# track CFLAGS changes.
-#
-# Outputs:
-#   boot-img/$(BOARD)/boot.bin - flash image (per-board slot, committed)
-#   btcode/build/test.bin      - RAM-loadable image for RAM testing
+# One build recipe: build_bootloader.sh.  It locates the Lexra toolchain and
+# the Realtek tools, validates BOARD, builds the production image into
+# boot/build + btcode/build (copied to boot-img/$(BOARD)/boot.bin) and the
+# RAM-test variant into boot/build-ramtest + btcode/build-ramtest
+# (btcode/build-ramtest/test.bin).  This Makefile only forwards to it, so
+# `make` and `./build_bootloader.sh` cannot drift apart.
 #
 # Targets:
 #   all   - build both variants (default)
-#   clean - remove all build outputs
+#   clean - remove all build outputs (boot-img/ is left alone: committed)
 #
-# Variables:
+# Variables (forwarded through the environment):
 #   JUMP_ADDR  - kernel entry point passed to stage-2 (default 0x80500000)
 #   BOARD      - board directory under boards/ (default lidl)
-#   XTOOLS_DIR - path to the Lexra cross-toolchain sysroot
-#   CROSS      - toolchain prefix (default mips-lexra-linux-musl-)
-
-JUMP_ADDR    ?= 0x80500000
-BOARD        ?= lidl
-XTOOLS_DIR   ?= $(HOME)/rtl8196e-gateway/x-tools/mips-lexra-linux-musl
-CROSS        ?= mips-lexra-linux-musl-
-PATH         := $(XTOOLS_DIR)/bin:$(PATH)
-
-export PATH CROSS
 
 .PHONY: all clean
 
 all:
-	# --- boot image ---
-	$(MAKE) -C boot clean
-	$(MAKE) -C boot boot JUMP_ADDR=$(JUMP_ADDR) BOARD=$(BOARD)
-	$(MAKE) -C btcode clean
-	$(MAKE) -C btcode BOARD=$(BOARD)
-	mkdir -p boot-img/$(BOARD)
-	cp -f btcode/build/boot.bin boot-img/$(BOARD)/boot.bin
-	# --- ramtest variant (btcode CFLAGS change -> clean btcode) ---
-	$(MAKE) -C boot clean
-	$(MAKE) -C boot boot JUMP_ADDR=$(JUMP_ADDR) BOARD=$(BOARD) RAMTEST_TRACE=1
-	$(MAKE) -C btcode clean
-	$(MAKE) -C btcode BOARD=$(BOARD) RAMTEST_TRACE=1
+	BOARD="$(BOARD)" JUMP_ADDR="$(JUMP_ADDR)" ./build_bootloader.sh
 
-# boot-img/<board>/boot.bin is a committed artifact, not a build output —
-# clean leaves it alone (git restores it if a build overwrote it).
 clean:
-	$(MAKE) -C boot clean
-	$(MAKE) -C btcode clean
+	./build_bootloader.sh clean

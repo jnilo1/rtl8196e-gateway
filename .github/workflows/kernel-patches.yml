@@ -11,7 +11,7 @@ on:
   pull_request:
     paths:
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18/**'
-      - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-7.1/**'
+      - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-7.2/**'
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh'
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/lint_patches.sh'
       - '.github/workflows/kernel-patches.yml'
@@ -21,7 +21,7 @@ on:
       - 'v*-pre'
     paths:
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18/**'
-      - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-7.1/**'
+      - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-7.2/**'
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh'
       - '3-Main-SoC-Realtek-RTL8196E/32-Kernel/lint_patches.sh'
       - '.github/workflows/kernel-patches.yml'
@@ -48,7 +48,7 @@ jobs:
           path: 3-Main-SoC-Realtek-RTL8196E/32-Kernel/linux-*.tar.xz
           key: kernel-tarball-${{ hashFiles('3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh') }}
 
-      - name: From-clean patch dry-run (6.18 + 7.1)
+      - name: From-clean patch dry-run (6.18 + 7.2)
         run: |
           KERNEL=6.18 ./3-Main-SoC-Realtek-RTL8196E/32-Kernel/lint_patches.sh
-          KERNEL=7.1  ./3-Main-SoC-Realtek-RTL8196E/32-Kernel/lint_patches.sh
+          KERNEL=7.2  ./3-Main-SoC-Realtek-RTL8196E/32-Kernel/lint_patches.sh

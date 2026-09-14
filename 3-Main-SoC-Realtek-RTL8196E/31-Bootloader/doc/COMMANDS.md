@@ -7,7 +7,9 @@ The bootloader provides an interactive serial console (38400 8N1) at the
 are hexadecimal unless noted otherwise.
 
 The console is entered automatically when no valid firmware is found in
-flash, or by pressing **ESC** during the 3-second boot countdown.
+flash, or by holding **ESC** while the board boots (the key is sampled
+while the kernel image is checksummed and once more before the jump; there
+is no timed window).
 
 A built-in TFTP server (IP `192.168.1.6`) listens for firmware uploads
 in the background while the console is active.
@@ -123,12 +125,13 @@ reboots after a successful flash:
 | `cs6c`    | Linux kernel           | yes                    | yes                  |
 | `cr6c`    | Linux kernel (root-fs) | yes                    | yes                  |
 | `r6cr`    | Root filesystem        | no                     | no                   |
-| `boot`    | Boot code              | no                     | yes                  |
+| `boot`    | Boot code              | yes                    | yes                  |
 | `ALL1`    | Total image            | yes                    | yes                  |
 | `ALL2`    | Total image (no check) | yes                    | yes                  |
 
-Boot code flashing does not auto-reboot — the board stays at the
-`<RealTek>` prompt after flashing.  Reboot manually with `J BFC00000`.
+Every image type auto-reboots after a successful write (`boot` included
+since V2.5).  A write is reported as succeeded only after the range has been
+read back and compared with the upload.
 
 Without arguments, displays the current setting.
 
@@ -373,7 +376,7 @@ Flash Write Succeeded!
 Success!
 <RealTek>J 80100000
 ---Jump to address=80100000
-Realtek RTL8196E  CPU: 380MHz  RAM: 32MB  Flash: GD25Q128
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
 Bootloader: v2.1 - 2026.02.11-09:49+0100 - J. Nilo
 ---RAMTEST mode: skipping kernel boot
 ---Escape booting by user

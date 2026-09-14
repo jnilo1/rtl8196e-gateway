@@ -52,11 +52,11 @@ services:
   # Matter Server (matter.js) — Matter fabric controller
   matter-server:
     container_name: matter-server
-    # Pinned to a release tag for reproducibility. 1.3.3 == stable == latest as of
-    # 2026-07-31, digest:
-    #   sha256:ac537ba44a2edaaf785b818f8b7ce75cdf736539401462046f0042670bee4063
+    # Pinned to a release tag for reproducibility. 1.4.0 == stable == latest as of
+    # 2026-09-14, digest:
+    #   sha256:54232d0d3e7dff5a54759469d2753399270412b4c30c55b31750a4595e4cb236
     # Switch to :stable to follow upstream instead.
-    image: ghcr.io/matter-js/matterjs-server:1.3.3
+    image: ghcr.io/matter-js/matterjs-server:1.4.0
     network_mode: host        # required — mDNS and Matter device discovery
     restart: unless-stopped
     # The image runs unprivileged (uid 1000) and creates /data already owned by 1000:1000,
@@ -86,7 +86,11 @@ services:
   # Home Assistant — UI for commissioning and device management
   homeassistant:
     container_name: homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
+    # Pinned to a release tag for reproducibility. 2026.9.2 == stable as of
+    # 2026-09-14, digest:
+    #   sha256:a1bc133af84ee6505fe2c266d9805b7c75b780dfdc188edfee3b11e8f3cd8efe
+    # Switch to :stable to follow upstream instead.
+    image: ghcr.io/home-assistant/home-assistant:2026.9.2
     network_mode: host
     restart: unless-stopped
     privileged: true

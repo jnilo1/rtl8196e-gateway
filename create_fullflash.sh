@@ -22,7 +22,7 @@
 #
 # Environment variables (for non-interactive use):
 #   BOARD       - "lidl" (default) or "sengled-e39-g8c" (selects the kernel image)
-#   KERNEL      - "6.18" (default) or "7.1" (selects the kernel line)
+#   KERNEL      - "6.18" (default) or "7.2" (selects the kernel line)
 #   NET_MODE    - "static", "dhcp", or "skip"
 #   IPADDR      - Static IP address for the gateway
 #   NETMASK     - Netmask
@@ -46,6 +46,8 @@ RTL_DIR="${SCRIPT_DIR}/3-Main-SoC-Realtek-RTL8196E"
 # and the write-back that remembers what we install. See lib/gwconf.sh.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib/gwconf.sh"
+# CRC trailer of the raw image, checked by the bootloader — see lib/fullflash_crc.sh.
+. "${SCRIPT_DIR}/lib/fullflash_crc.sh"
 
 # BOARD (default lidl) and KERNEL (default 6.18) select the pre-built kernel
 # image; a Lidl user who sets neither gets the historical kernel-6.18.img.
@@ -216,7 +218,7 @@ kernel_data=$(stat -c%s "$KERNEL_IMG")           # kept with header
 rootfs_data=$(($(stat -c%s "$ROOTFS_IMG") - CVIMG_HDR))
 userdata_data=$(($(stat -c%s "$USERDATA_IMG") - CVIMG_HDR))
 
-boot_max=$((OFF_KERNEL - OFF_BOOT))        # 128 KiB
+boot_max=$((OFF_KERNEL - OFF_BOOT - FFCRC_LEN)) # 128 KiB minus the CRC trailer (lib/fullflash_crc.sh)
 kernel_max=$((OFF_ROOTFS - OFF_KERNEL))    # 1920 KiB
 rootfs_max=$((OFF_USERDATA - OFF_ROOTFS))  # 2048 KiB
 userdata_max=$((FLASH_SIZE - OFF_USERDATA)) # 12288 KiB
@@ -307,6 +309,11 @@ if [ $ERRORS -ne 0 ]; then
     rm -f "$OUTPUT"
     exit 1
 fi
+
+# CRC trailer at 0x1FFF0 (see lib/fullflash_crc.sh), written last so it
+# covers the final image.
+ff_crc=$(ffcrc_write "$OUTPUT") || { echo "Error: could not write the CRC trailer" >&2; rm -f "$OUTPUT"; exit 1; }
+echo "  CRC trailer @ 0x01FFF0: ${ff_crc} [OK]"
 
 echo ""
 echo "========================================="

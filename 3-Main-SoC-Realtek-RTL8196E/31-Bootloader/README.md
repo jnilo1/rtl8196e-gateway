@@ -11,8 +11,8 @@ This is the **last missing piece** that makes the entire gateway firmware stack 
 **Clean boot header** — The stock bootloader prints verbose, cluttered output. This version shows only what matters:
 
 ```
-Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128
-Bootloader: V3.0 - 2026.09.10 - J. Nilo
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
+Bootloader: V3.1 - 2026.09.11-18:00+0200 - J. Nilo
 ```
 
 **Download progress in %** — The stock bootloader prints endless `.` or `#` characters that flood the serial console during TFTP transfers. This version shows a clean percentage indicator:
@@ -44,7 +44,7 @@ Outputs:
   boot-code flash). One pre-built image per board is committed; the build
   writes only into the slot of the selected `BOARD`, so building for one
   board never touches another board's binary.
-- `btcode/build/test.bin` — RAM-test image (test without flashing)
+- `btcode/build-ramtest/test.bin` — RAM-test image (test without flashing)
 
 Per-board constants (DRAM size and DDR bring-up values, boothold page
 placement) live under `boards/` — see `boards/README.md` for the
@@ -95,10 +95,8 @@ tftp -m binary 192.168.1.6 -c put boot-img/lidl/boot.bin
 tftp -m binary 192.168.1.6 -c put boot-img/sengled-e39-g8c/boot.bin
 ```
 
-The bootloader auto-detects the image type and flashes it. After flashing, reboot manually:
-```
-<RealTek>J BFC00000
-```
+The bootloader auto-detects the image type, flashes it, reads the range back
+to verify it, and reboots.
 
 ### Flashing individual partitions
 

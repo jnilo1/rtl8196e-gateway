@@ -9,13 +9,14 @@
 #
 # Uses the Lexra/musl toolchain from the project x-tools directory.
 #
-# Two variants are built:
-#   - boot:    production flash image (stays in download mode after boot TFTP)
-#   - ramtest: RAM-test image with read-back verification of BSS clears
+# Two variants are built, each in its own object directory:
+#   - boot:    production flash image            -> */build/
+#   - ramtest: RAM-test image (RAMTEST_TRACE)    -> */build-ramtest/
 #
 # Outputs:
-#   boot-img/<board>/boot.bin  - flash image (per-board slot, committed)
-#   btcode/build/test.bin      - RAM-loadable image for RAM testing
+#   boot-img/<board>/boot.bin     - flash image (per-board slot, committed)
+#   btcode/build/boot.bin         - the same flash image, as built
+#   btcode/build-ramtest/test.bin - RAM-loadable image for RAM testing
 #
 # Usage:
 #   ./build_bootloader.sh          # build all variants
@@ -136,25 +137,44 @@ echo ""
 # Pass tool paths to btcode Makefile (overrides hardcoded defaults)
 BTCODE_VARS="CROSS=${CROSS_PREFIX} CVIMG=${REALTEK_TOOLS}/cvimg LZMA=${REALTEK_TOOLS}/lzma BOARD=${BOARD}"
 
-# boot/ must be cleaned between variants because the Makefiles do not
-# track CFLAGS changes.
-
 # --- boot variant ---
 echo "--- Building boot image (board: $BOARD) ---"
 make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" clean
-make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" boot JUMP_ADDR="$JUMP_ADDR" BOARD="$BOARD"
+make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" boot JUMP_ADDR="$JUMP_ADDR" BOARD="$BOARD" OUTDIR=build
 make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS clean
-make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS
+make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS OUTDIR=build
 mkdir -p "$SCRIPT_DIR/boot-img/$BOARD"
 cp -f "$SCRIPT_DIR/btcode/build/boot.bin" "$SCRIPT_DIR/boot-img/$BOARD/boot.bin"
 
-# --- ramtest variant (btcode CFLAGS change -> clean btcode too) ---
+# --- ramtest variant (separate object directory, no clean needed) ---
 echo ""
 echo "--- Building ramtest variant ---"
-make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" clean
-make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" boot JUMP_ADDR="$JUMP_ADDR" BOARD="$BOARD" RAMTEST_TRACE=1
-make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS clean
-make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS RAMTEST_TRACE=1
+make -C "$SCRIPT_DIR/boot" CROSS="$CROSS_PREFIX" boot JUMP_ADDR="$JUMP_ADDR" BOARD="$BOARD" OUTDIR=build-ramtest RAMTEST_TRACE=1
+make -C "$SCRIPT_DIR/btcode" $BTCODE_VARS OUTDIR=build-ramtest RAMTEST_TRACE=1
+
+# --- Include trace check ----------------------------------------------------
+# The loader is freestanding and owns every header it uses; the only outside
+# files are the compiler's own <stdint.h>, <stddef.h> and <stdarg.h>, which
+# gcc serves from lib/gcc/ under -ffreestanding.  The -MD dependency files of
+# every unit must therefore name nothing under the toolchain sysroot — that
+# is where a lost -ffreestanding, or a stray <string.h>, would show first.
+echo ""
+echo "--- Checking the include trace ---"
+dep_files="$(find "$SCRIPT_DIR/boot/build" "$SCRIPT_DIR/boot/build-ramtest" \
+                  "$SCRIPT_DIR/btcode/build" "$SCRIPT_DIR/btcode/build-ramtest" -name '*.d')"
+n_dep=$(echo "$dep_files" | grep -c .)
+outside="$(cat $dep_files | tr ' \\' '\n\n' | grep '^/' | sort -u)"
+if echo "$outside" | grep -q 'sysroot'; then
+    echo "ERROR: a unit includes a sysroot header (the build is freestanding):" >&2
+    echo "$outside" | grep 'sysroot' >&2
+    exit 1
+fi
+if [ -n "$outside" ] && echo "$outside" | grep -qv '/lib/gcc/'; then
+    echo "ERROR: a unit includes a header from outside the tree and outside gcc's own:" >&2
+    echo "$outside" | grep -v '/lib/gcc/' >&2
+    exit 1
+fi
+echo "$n_dep dependency files, outside headers: $(echo "$outside" | sed 's|.*/||' | tr '\n' ' ')"
 
 # --- Summary ----------------------------------------------------------------
 
@@ -164,6 +184,6 @@ echo "  BUILD SUMMARY"
 echo "========================================="
 echo ""
 [ -f "$SCRIPT_DIR/boot-img/$BOARD/boot.bin" ] && ls -lh "$SCRIPT_DIR/boot-img/$BOARD/boot.bin"
-[ -f "$SCRIPT_DIR/btcode/build/test.bin" ]    && ls -lh "$SCRIPT_DIR/btcode/build/test.bin"
+[ -f "$SCRIPT_DIR/btcode/build-ramtest/test.bin" ] && ls -lh "$SCRIPT_DIR/btcode/build-ramtest/test.bin"
 echo ""
 echo "Done."

@@ -4,6 +4,23 @@ All notable changes to the EFR32 firmware and tooling are documented here.
 
 ---
 
+## [4.5.0] - 2026-09-14
+
+### Docker stacks — image pins refreshed, Home Assistant pinned
+
+The five compose files under `24-`, `25-` and `26-` move to the current upstream
+releases: Zigbee2MQTT `2.7.2` → `2.14.1` (`docker-compose.yml`,
+`docker-compose-zigbee.yml`, `docker-compose-zoh.yml`) and matter.js server
+`1.3.3` → `1.4.0` (`docker-compose-otbr-host.yml`, `docker-compose-otbr-gateway.yml`;
+`1.4.0` is the digest `stable` resolves to on 2026-09-14, recorded next to the image
+line). Home Assistant, which followed `:stable`, is now pinned like every other
+artefact in this tree, to `2026.9.2` — the digest `stable` resolved to on the same
+day, recorded in the same way. Nothing on the gateway changes; the pins are the
+host-side stacks only. None of the three was re-tested against a gateway in this
+change.
+
+---
+
 ## [4.3.0] - 2026-09-03
 
 ### Documentation — what the first G4 bootloader install actually looks like, and what its version is not (discussion #148, @hlyi)

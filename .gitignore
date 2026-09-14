@@ -124,3 +124,4 @@ gateway.env
 # Docker .env rendered by flash_userdata.sh with the gateway's address, so the
 # compose files stay generic and the working tree stays clean.
 2-Zigbee-Radio-Silabs-EFR32/26-OT-RCP/docker/.env
+3-Main-SoC-Realtek-RTL8196E/32-Kernel/*.sha256sums

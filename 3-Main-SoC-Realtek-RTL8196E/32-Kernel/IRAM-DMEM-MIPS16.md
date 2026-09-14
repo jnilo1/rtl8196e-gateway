@@ -592,7 +592,7 @@ measured benefit.
 | `files-<line>/arch/mips/include/asm/mach-realtek/imem.h` | Current placement controls |
 | `patches-<line>/arch-mips-kernel-vmlinux.lds.S.patch` | `.iram`/`.dram` linker layout and I-MEM size assertion |
 | `files-<line>/drivers/net/ethernet/rtl8196e-eth/` | Driver I-MEM candidates and performance baseline |
-| `files-<line>/drivers/net/ethernet/rtl8196e-eth/PERFORMANCE.md` | Noise characterisation, compensated controls, cache geometry and copy-core A/B results |
+| `files-<line>/drivers/net/ethernet/rtl8196e-eth/PERFORMANCE.md` | Per-release throughput tables; the noise characterisation, compensated controls, cache geometry and copy-core A/B results are in its archived history (see its "History" section) |
 | `POST-MORTEM-driver-perf.md` | Measurement and ftrace limitations |
 | `/home/jnilo/Documents/RTL8196E/20260809-campagne-dmem-rtl8196e/` | D0--D3-R2 protocols, reports and raw evidence |
 | `<SDK>/linux-2.6.30/arch/rlx/mm/imem-dmem.S` | Historical COP3 sequence |

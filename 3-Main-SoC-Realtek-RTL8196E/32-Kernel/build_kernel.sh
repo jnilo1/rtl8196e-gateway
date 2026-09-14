@@ -3,12 +3,12 @@
 #
 # Two coexisting kernel lines, selected by KERNEL (default 6.18):
 #   6.18 (production)   → patches-6.18/ files-6.18/ config-6.18-realtek.txt
-#   7.1  (supported)    → patches-7.1/  files-7.1/  config-7.1-realtek.txt
+#   7.2  (experimental) → patches-7.2/  files-7.2/  config-7.2-realtek.txt
 # Output: kernel-img/<board>/kernel-<KERNEL>.img (zboot; in-tree decompressor).
 #
 # Usage:
 #   ./build_kernel.sh                        # 6.18 / lidl → kernel-img/lidl/kernel-6.18.img
-#   KERNEL=7.1 ./build_kernel.sh             # build the 7.1 line
+#   KERNEL=7.2 ./build_kernel.sh             # build the 7.2 line
 #   BOARD=sengled-e39-g8c ./build_kernel.sh  # build for the Sengled G4 board
 #   ./build_kernel.sh clean                  # wipe build tree, rebuild from scratch
 #   ./build_kernel.sh menuconfig             # open menuconfig
@@ -17,7 +17,21 @@
 #   ./build_kernel.sh --help
 #
 #   BOARD=<name>   board devicetree built in (default: lidl; also sengled-e39-g8c).
-#   KERNEL=<line>  kernel line (default: 6.18; also 7.1).
+#   KERNEL=<line>  kernel line (default: 6.18; also 7.2).
+#   KERNEL_MIRROR=<url>  base of a kernel.org mirror, the directory that holds
+#                  v6.x/ and v7.x/ (default: empty = https://cdn.kernel.org/pub/linux/kernel).
+#                  e.g. KERNEL_MIRROR=https://mirrors.ircam.fr/pub/linux/kernel
+#                  The tarball is always verified against the sha256sums.asc of the
+#                  same source; a truncated or corrupt download is deleted, never
+#                  extracted.
+#   KERNEL_DL_MIN_RATE=<bytes/s>  a transfer slower than this for 30 s is dropped
+#                  and resumed on a fresh connection (default 500000: one TCP flow
+#                  out of several can land on a degraded path and crawl at
+#                  100 KB/s while a new one runs at 40 MB/s). Lower it on a slow link.
+#   KERNEL_CURL_OPTS=<opts>  extra curl options for the download (default empty),
+#                  e.g. KERNEL_CURL_OPTS=-4 when the IPv6 path to the mirror is
+#                  degraded (seen 2026-09-14: IPv6 RTT 2-5 s, IPv4 40 MB/s to the
+#                  same host); the log prints the address actually used.
 #   Add-a-board recipe: the realtek dts Makefile of the selected line.
 #
 # J. Nilo — February 2026, unified April 2026
@@ -37,22 +51,29 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL="${KERNEL:-6.18}"
 case "$KERNEL" in
     6.18)
-        KERNEL_VERSION="6.18.45"        # exact tarball version
+        KERNEL_VERSION="6.18.51"        # exact tarball version
         KERNEL_MAJOR_MINOR="6.18"       # stable family (paths, image name)
         KERNEL_MAJOR="6.x"              # kernel.org /pub/linux/kernel/v${MAJOR}/
         ;;
-    7.1)
-        KERNEL_VERSION="7.1.9"          # exact tarball version (linux-7.1.9.tar.xz)
-        KERNEL_MAJOR_MINOR="7.1"
+    7.2)
+        KERNEL_VERSION="7.2.5"          # exact tarball version (linux-7.2.5.tar.xz)
+        KERNEL_MAJOR_MINOR="7.2"
         KERNEL_MAJOR="7.x"
         ;;
     *)
-        echo "ERROR: unknown KERNEL '$KERNEL' (known lines: 6.18, 7.1)" >&2
+        echo "ERROR: unknown KERNEL '$KERNEL' (known lines: 6.18, 7.2)" >&2
         exit 1
         ;;
 esac
 KERNEL_TARBALL="linux-${KERNEL_VERSION}.tar.xz"
-KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}/${KERNEL_TARBALL}"
+# Optional mirror: the directory that holds v6.x/, v7.x/ (trailing slash tolerated).
+KERNEL_MIRROR="${KERNEL_MIRROR:-}"
+KERNEL_BASE_URL="${KERNEL_MIRROR:-https://cdn.kernel.org/pub/linux/kernel}"
+KERNEL_BASE_URL="${KERNEL_BASE_URL%/}"
+KERNEL_URL="${KERNEL_BASE_URL}/v${KERNEL_MAJOR}/${KERNEL_TARBALL}"
+KERNEL_SUMS_URL="${KERNEL_BASE_URL}/v${KERNEL_MAJOR}/sha256sums.asc"
+KERNEL_DL_MIN_RATE="${KERNEL_DL_MIN_RATE:-500000}"   # bytes/s over 30 s, else drop + resume
+KERNEL_CURL_OPTS="${KERNEL_CURL_OPTS:-}"              # e.g. -4 (see header)
 VANILLA_DIR="linux-${KERNEL_VERSION}"
 
 PATCHES_DIR="${SCRIPT_DIR}/patches-${KERNEL_MAJOR_MINOR}"
@@ -64,6 +85,17 @@ USE_IMEM_POLICY=false
 if [ "${IMEM_POLICY_DISABLE:-0}" != "1" ] && [ -f "$IMEM_POLICY" ] && \
         [ "${IMEM_PROFILE:-0}" != "1" ] && [ "${IMEM_EMPTY:-0}" != "1" ]; then
     USE_IMEM_POLICY=true
+fi
+# Text placement layout (scripts/imem/text_layout.py): link-level pads that put
+# this exact release's hot functions back on benchmarked I-cache colours.
+# Production builds only — a layout is defined against the production link,
+# so it follows the release I-MEM policy and is skipped with it.
+DEFAULT_TEXT_LAYOUT_DIR="${SCRIPT_DIR}/scripts/imem/layouts/${KERNEL_VERSION}"
+TEXT_LAYOUT_DIR="${TEXT_LAYOUT_DIR:-$DEFAULT_TEXT_LAYOUT_DIR}"
+USE_TEXT_LAYOUT=false
+if [ "${TEXT_LAYOUT_DISABLE:-0}" != "1" ] && [ "$USE_IMEM_POLICY" = true ] && \
+        [ -f "$TEXT_LAYOUT_DIR/pads.patch" ]; then
+    USE_TEXT_LAYOUT=true
 fi
 # IMAGE depends on BOARD too; defined after the board selection below.
 
@@ -217,10 +249,29 @@ if [ ! -f "$BUILD_DIR/Makefile" ]; then
     echo ""
     cd "$SCRIPT_DIR"
 
-    if [ ! -f "$KERNEL_TARBALL" ]; then
-        echo "Downloading Linux ${KERNEL_VERSION}..."
-        wget -q --show-progress "$KERNEL_URL"
+    # Download (resumable, retried: the kernel.org CDN can stall silently for
+    # minutes) and verify against the source's own sha256sums.asc before
+    # extracting. A tarball already present is verified too: a previous run
+    # interrupted mid-download leaves a truncated file behind.
+    echo "Fetching Linux ${KERNEL_VERSION} from ${KERNEL_BASE_URL}/v${KERNEL_MAJOR}/"
+    # shellcheck disable=SC2086 # KERNEL_CURL_OPTS is a list of options by design
+    curl -fsS $KERNEL_CURL_OPTS --retry 10 --retry-all-errors -o "${KERNEL_TARBALL}.sha256sums" "$KERNEL_SUMS_URL" || {
+        echo "ERROR: cannot fetch $KERNEL_SUMS_URL" >&2; exit 1; }
+    expected="$(grep " ${KERNEL_TARBALL}\$" "${KERNEL_TARBALL}.sha256sums" | awk '{print $1}')"
+    [ -n "$expected" ] || { echo "ERROR: ${KERNEL_TARBALL} not listed in $KERNEL_SUMS_URL" >&2; exit 1; }
+    if [ ! -f "$KERNEL_TARBALL" ] || [ "$(sha256sum "$KERNEL_TARBALL" | awk '{print $1}')" != "$expected" ]; then
+        [ -f "$KERNEL_TARBALL" ] && echo "Resuming an incomplete ${KERNEL_TARBALL} ($(stat -c %s "$KERNEL_TARBALL") bytes)..."
+        # shellcheck disable=SC2086
+        curl -fS $KERNEL_CURL_OPTS -C - --speed-time 30 --speed-limit "$KERNEL_DL_MIN_RATE" --retry 30 --retry-all-errors \
+            -w 'downloaded from %{remote_ip} at %{speed_download} B/s\n' \
+            -o "$KERNEL_TARBALL" "$KERNEL_URL" || { echo "ERROR: download failed: $KERNEL_URL" >&2; exit 1; }
+        if [ "$(sha256sum "$KERNEL_TARBALL" | awk '{print $1}')" != "$expected" ]; then
+            echo "ERROR: ${KERNEL_TARBALL} sha256 mismatch against ${KERNEL_SUMS_URL} — removed" >&2
+            rm -f "$KERNEL_TARBALL"; exit 1
+        fi
     fi
+    echo "sha256 OK: ${expected}"
+    rm -f "${KERNEL_TARBALL}.sha256sums"
 
     echo "Extracting..."
     tar xf "$KERNEL_TARBALL"
@@ -257,6 +308,20 @@ if [ ! -f "$BUILD_DIR/Makefile" ]; then
         echo "ERROR: rejected hunks present:" >&2
         find . -name '*.rej' >&2
         exit 1
+    fi
+    if [ "$USE_TEXT_LAYOUT" = true ]; then
+        echo "Applying text layout pads: $(basename "$TEXT_LAYOUT_DIR")/pads.patch"
+        patch_out="$(patch -p1 -f --no-backup-if-mismatch < "$TEXT_LAYOUT_DIR/pads.patch" 2>&1)" || {
+            printf '%s\n' "$patch_out" >&2
+            echo "ERROR: text layout pads failed to apply (regenerate with scripts/imem/propose_text_pads.py)" >&2
+            exit 1
+        }
+        if printf '%s\n' "$patch_out" | \
+                grep -Eiq 'fuzz|offset|warning|malformed|misordered|reversed|previously applied|FAILED|reject'; then
+            echo "ERROR: text layout pads applied with a warning, fuzz, or offset" >&2
+            exit 1
+        fi
+        sha256sum "$TEXT_LAYOUT_DIR/pads.patch" | awk '{print $1}' > "$BUILD_DIR/.text-layout.sha256"
     fi
     echo ""
 else
@@ -443,6 +508,31 @@ for root in ${IMEM_HOLE_ROOTS:-}; do
     esac
     IMEM_KBUILD_LDFLAGS="${IMEM_KBUILD_LDFLAGS} -u ${root}"
 done
+# Text placement pads (link-level, never executed): kept alive by -u like the
+# holes, under their own name so verify_policy's hole census is unaffected.
+# A tree prepared with a layout must be relinked with its roots, and a tree
+# prepared without one cannot grow pads incrementally: both need `clean`.
+LAYOUT_STAMP="$BUILD_DIR/.text-layout.sha256"
+if [ "$USE_TEXT_LAYOUT" = true ]; then
+    if [ ! -f "$LAYOUT_STAMP" ] || \
+       [ "$(cat "$LAYOUT_STAMP")" != "$(sha256sum "$TEXT_LAYOUT_DIR/pads.patch" | awk '{print $1}')" ]; then
+        echo "ERROR: text layout $(basename "$TEXT_LAYOUT_DIR") is not the one this tree was prepared with; rebuild with clean" >&2
+        exit 1
+    fi
+    if [ -z "${TEXT_PAD_ROOTS:-}" ]; then
+        TEXT_PAD_ROOTS="$(grep -oE '__text_pad_[0-9]{4}' "$TEXT_LAYOUT_DIR/pads.patch" | sort -u | tr '\n' ' ')"
+    fi
+elif [ -f "$LAYOUT_STAMP" ]; then
+    echo "ERROR: this build tree carries text layout pads but the layout is disabled or absent; rebuild with clean" >&2
+    exit 1
+fi
+for root in ${TEXT_PAD_ROOTS:-}; do
+    case "$root" in
+        __text_pad_[0-9][0-9][0-9][0-9]) ;;
+        *) echo "ERROR: invalid text pad root: $root" >&2; exit 1 ;;
+    esac
+    IMEM_KBUILD_LDFLAGS="${IMEM_KBUILD_LDFLAGS} -u ${root}"
+done
 if [ "${VMLINUX_LINK_MAP:-0}" = "1" ]; then
     # One map per linker output: make expands the preserved automatic $@ in
     # each final-link recipe, so the zboot link cannot overwrite the vmlinux
@@ -478,6 +568,18 @@ if [ "$USE_IMEM_POLICY" = true ]; then
         --build-dir "$BUILD_DIR" --policy "$IMEM_POLICY" \
         --report "$BUILD_DIR/.imem-policy-report.json" --cross "$CROSS_COMPILE"
     printf '%s\n' "$POLICY_HASH" >"$POLICY_STAMP"
+fi
+
+if [ "$USE_TEXT_LAYOUT" = true ] && [ "${TEXT_LAYOUT_RECORD:-0}" != "1" ]; then
+    if [ ! -f "$TEXT_LAYOUT_DIR/layout.json" ]; then
+        echo "ERROR: $(basename "$TEXT_LAYOUT_DIR")/layout.json is missing — record it from an accepted build" >&2
+        echo "  (TEXT_LAYOUT_RECORD=1 builds without the guard for that purpose)" >&2
+        exit 1
+    fi
+    echo "Verifying text layout $(basename "$TEXT_LAYOUT_DIR")..."
+    python3 "${SCRIPT_DIR}/scripts/imem/text_layout.py" verify \
+        --build-dir "$BUILD_DIR" --layout "$TEXT_LAYOUT_DIR/layout.json" \
+        --pads-patch "$TEXT_LAYOUT_DIR/pads.patch" --cross "$CROSS_COMPILE" || exit 1
 fi
 
 echo ""

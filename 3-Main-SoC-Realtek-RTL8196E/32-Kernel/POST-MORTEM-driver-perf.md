@@ -123,7 +123,8 @@ during the investigation.  Counters and the sysfs attribute were
 removed before the driver was merged.  The current driver has
 different, more focused TX-side probes (`xmit_probe`, `kick_probe`,
 `cache_probe`) on the `feat/tx-throughput` archive branch — see
-`PERFORMANCE.md` § "In-driver instrumentation".
+the archived performance record (`PERFORMANCE.md`, "History"),
+"In-driver instrumentation".
 
 ### What the counters revealed
 
@@ -225,8 +226,9 @@ after the fix. 5.10 gains were marginal (already amortized by accident).
 > 71.3 cited above; that earlier figure was a single-run point measurement
 > while the May number is the median of a 5-rep sweep with 1 % variance.
 > Both are consistent within the bench noise floor.  Current production
-> baselines and per-phase TX path decomposition live in
-> `files-6.18/drivers/net/ethernet/rtl8196e-eth/PERFORMANCE.md`.
+> baselines live in
+> `files-6.18/drivers/net/ethernet/rtl8196e-eth/PERFORMANCE.md`; the per-phase
+> TX path decomposition is in its archived history (see that file's "History").
 
 ---
 
@@ -446,7 +448,8 @@ to mainline 6.x has paid off.
 > **Postscript (May 2026).**  Track A (kick_tx coalescing,
 > `rtl8196e_kick_threshold = 4` with NAPI-end drain) was deployed in
 > v3.4.1 and adds another +1.2 % on TCP TX over the April baseline.
-> See "Levers explored" in the driver's `PERFORMANCE.md` for the full
+> See "Levers explored" in the driver's archived performance record
+> (`PERFORMANCE.md`, "History") for the full
 > v3.4.1 perf session, including the three other orthogonal levers
 > that were measured and rejected (writeback-only flush, NAPI weight
 > 128, full TX scatter-gather).

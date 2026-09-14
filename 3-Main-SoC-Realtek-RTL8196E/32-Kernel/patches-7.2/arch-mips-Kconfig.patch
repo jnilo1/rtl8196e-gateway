@@ -1,0 +1,123 @@
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -83,8 +83,8 @@
+ 	select HAVE_MOD_ARCH_SPECIFIC
+ 	select HAVE_NMI
+ 	select HAVE_PAGE_SIZE_4KB if !CPU_LOONGSON2EF && !CPU_LOONGSON64
+-	select HAVE_PAGE_SIZE_16KB if !CPU_R3000
+-	select HAVE_PAGE_SIZE_64KB if !CPU_R3000
++	select HAVE_PAGE_SIZE_16KB if !CPU_R3000 && !CPU_RLX4181
++	select HAVE_PAGE_SIZE_64KB if !CPU_R3000 && !CPU_RLX4181
+ 	select HAVE_PERF_EVENTS
+ 	select HAVE_PERF_REGS
+ 	select HAVE_PERF_USER_STACK_DUMP
+@@ -696,6 +696,29 @@
+ 	select SYS_HAS_EARLY_PRINTK
+ 	select ARCH_HAS_RESET_CONTROLLER
+ 	select RESET_CONTROLLER
++	
++config REALTEK
++	bool "Realtek RLX based SoC"
++	select SYS_HAS_CPU_MIPS32_R1
++	select SYS_HAS_CPU_MIPS32_R2   # Selected by defconfig, good to have
++	select SYS_SUPPORTS_BIG_ENDIAN
++	select SYS_SUPPORTS_LITTLE_ENDIAN
++	select BOOT_RAW
++	select DMA_NONCOHERENT
++	select IRQ_MIPS_CPU
++	select USE_OF
++	select SYS_SUPPORTS_MIPS16
++	select SYS_SUPPORTS_32BIT_KERNEL
++	select SYS_HAS_EARLY_PRINTK
++	select COMMON_CLK
++	select TIMER_OF
++	select CLKSRC_MMIO
++	select PINCTRL
++	select PINMUX
++	select IRQ_DOMAIN
++	select MULTI_IRQ_HANDLER
++	help
++	  Support for Realtek RLX SoC based board
+ 
+ config MACH_REALTEK_RTL
+ 	bool "Realtek RTL838x/RTL839x based machines"
+@@ -1065,6 +1088,7 @@
+ source "arch/mips/mobileye/Kconfig"
+ source "arch/mips/pic32/Kconfig"
+ source "arch/mips/ralink/Kconfig"
++source "arch/mips/realtek/Kconfig"
+ source "arch/mips/sgi-ip27/Kconfig"
+ source "arch/mips/sibyte/Kconfig"
+ source "arch/mips/txx9/Kconfig"
+@@ -1574,6 +1598,13 @@
+ 	  of the supported machines have an R4000 (or similar) CPU, R4x00
+ 	  might be a safe bet.  If the resulting kernel does not work,
+ 	  try to recompile with R3000.
++	  
++config CPU_RLX4181
++	bool "RLX4181"
++	depends on SYS_HAS_CPU_RLX4181
++	select CPU_R3K_TLB
++	select CPU_SUPPORTS_32BIT_KERNEL
++	select CPU_SUPPORTS_HIGHMEM
+ 
+ config CPU_R4300
+ 	bool "R4300"
+@@ -1924,6 +1955,9 @@
+ 
+ config SYS_HAS_CPU_R5000
+ 	bool
++	
++config SYS_HAS_CPU_RLX4181
++	bool
+ 
+ config SYS_HAS_CPU_R5500
+ 	bool
+@@ -2166,7 +2200,7 @@
+ 
+ config CPU_GENERIC_DUMP_TLB
+ 	bool
+-	default y if !CPU_R3000
++	default y if !CPU_R3000 && !CPU_RLX4181
+ 
+ config MIPS_FP_SUPPORT
+ 	bool "Floating Point support" if EXPERT
+@@ -2194,11 +2228,11 @@
+ config CPU_R4K_FPU
+ 	bool
+ 	depends on MIPS_FP_SUPPORT
+-	default y if !CPU_R2300_FPU
++	default y if !(CPU_R2300_FPU || CPU_RLX4181)
+ 
+ config CPU_R4K_CACHE_TLB
+ 	bool
+-	default y if !(CPU_R3K_TLB || CPU_SB1 || CPU_CAVIUM_OCTEON)
++	default y if !(CPU_R3K_TLB || CPU_SB1 || CPU_CAVIUM_OCTEON || CPU_RLX4181)
+ 
+ config MIPS_MT_SMP
+ 	bool "MIPS MT SMP support (1 TC on each available VPE)"
+@@ -2410,7 +2444,7 @@
+ 
+ config CPU_HAS_SYNC
+ 	bool
+-	depends on !CPU_R3000
++	depends on !(CPU_R3000 || CPU_RLX4181)
+ 	default y
+ 
+ #
+@@ -2470,13 +2504,13 @@
+ 
+ config MIPS_ASID_SHIFT
+ 	int
+-	default 6 if CPU_R3000
++	default 6 if CPU_R3000 || CPU_RLX4181
+ 	default 0
+ 
+ config MIPS_ASID_BITS
+ 	int
+ 	default 0 if MIPS_ASID_BITS_VARIABLE
+-	default 6 if CPU_R3000
++	default 6 if CPU_R3000 || CPU_RLX4181
+ 	default 8
+ 
+ config MIPS_ASID_BITS_VARIABLE

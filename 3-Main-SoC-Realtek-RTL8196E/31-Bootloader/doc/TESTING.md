@@ -27,15 +27,18 @@ functionality from RAM before committing to flash.
 ## Memory map constraints
 
 ```
-0x80000000 - 0x80000200   MIPS exception vectors (DO NOT OVERWRITE)
+0x80000000 - 0x80001000   MIPS exception vectors (refused as a load target)
 0x80100000 - 0x80200000   Safe area for loading test.bin
-0x80400000 - 0x80421600   Bootloader code/data/BSS (DO NOT OVERWRITE)
+0x80400000 - _end         Bootloader code/data/BSS (refused as a load target;
+                          _end is in boot/build/boot.nm, 0x80424a40 for V3.1)
 0x80500000 - ...          Default TFTP load address (AUTOBURN images)
+top - 0x3000 .. top       Two reserved pages (boothold, watchdog record)
 ```
 
-**Important:** Never use `LOADADDR 80000000`.  Writing to this address
-overwrites the CPU exception vectors, causing an immediate crash on
-the next interrupt.
+Since V3.1 `LOADADDR` refuses an address outside free RAM (below the first
+page, inside the running loader, in the two reserved pages at the top of
+DRAM), and an upload that would run into one of those regions is aborted
+with a TFTP error instead of overwriting it.
 
 ---
 
@@ -46,17 +49,19 @@ RAM without modifying flash.
 
 ### Step 1 — Enter download mode
 
-Power on or hardware-reset the board.  Press **ESC** within 3 seconds
-to abort kernel boot:
+Hold **ESC** while the board powers on (there is no timed window: the key
+is sampled while the kernel image is checksummed and once more just before
+the jump, so the key must already be on the line).  From a running Linux,
+`boothold && reboot` does the same without a keyboard:
 
 ```
 Booting...
-Realtek RTL8196E  CPU: 380MHz  RAM: 32MB  Flash: GD25Q128
-Bootloader: v2.1 - 2026.02.11-11:15+0100 - J. Nilo
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
+Bootloader: V3.1 - 2026.09.11-18:00+0200 - J. Nilo
 ---Escape booting by user
-P0phymode=01, embedded phy
 
 ---Ethernet init Okay!
+TFTP server IP: 192.168.1.6
 <RealTek>
 ```
 
@@ -72,7 +77,7 @@ Set TFTP Load Addr 0x80100000
 From the PC (the `tftp` client sends the file by name without path — you must `cd` into the directory containing `test.bin`):
 
 ```bash
-cd /path/to/31-Bootloader/btcode/build
+cd /path/to/31-Bootloader/btcode/build-ramtest
 tftp -m binary 192.168.1.6 -c put test.bin
 ```
 
@@ -92,20 +97,29 @@ Success!
 ```
 <RealTek>J 80100000
 ---Jump to address=80100000
-Realtek RTL8196E  CPU: 380MHz  RAM: 32MB  Flash: GD25Q128
-Bootloader: v2.1 - 2026.02.11-11:30+0100 - J. Nilo
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
+Bootloader: V3.1 - 2026.09.11-18:00+0200 - J. Nilo
+
+---RAMTEST kernel copy: 1440082 bytes in 230 ms
+
+---RAMTEST key check: during scan=0, at decision=0
+
 ---RAMTEST mode: skipping kernel boot
 
 ---Escape booting by user
-P0phymode=01, embedded phy
 
 ---Ethernet init Okay!
+TFTP server IP: 192.168.1.6
 <RealTek>
 ```
 
 Verify:
-- Timestamp matches the build time (not the flash bootloader's timestamp)
-- `RAMTEST mode: skipping kernel boot` is displayed
+- Version and timestamp match the build (not the flash bootloader's)
+- `RAMTEST kernel copy` and `RAMTEST mode: skipping kernel boot` are
+  displayed: the image scan found the kernel through the memory-mapped
+  flash window, copied it and validated its checksum — the read path works
+- `RAMTEST key check` reports what the ESC poll saw (see §1 of the V3.0 notes
+  in CHANGELOG.md for the paired-run procedure)
 - Board enters `<RealTek>` prompt without booting the kernel
 
 ### Step 4 — Run tests
@@ -148,13 +162,14 @@ checksum Ok !
 Flash write: dst=0x0 src=0x80500010 len=0x55d2 (21970 bytes)
 Flash Write Succeeded!
 <RealTek>
+reboot.......
 ```
 
-The board stays at the prompt after flashing.  Reboot manually:
-
-```
-<RealTek>J BFC00000
-```
+Every image type auto-reboots after a successful write (the `reboot` field
+of the signature table has been 1 for `boot` since V2.5).  `Flash Write
+Succeeded!` means the range was read back and compared with the upload;
+a mismatch prints `Flash verify FAILED at 0x...` and `Flash Write Failed!`,
+and the UDP notification carries `FAIL`.
 
 ### From test.bin (running in RAM)
 
@@ -250,19 +265,129 @@ argument), or a **cold** power-cycle into download mode, must fall back to
 | `FLR` | `FLR 80500000 0 100` | `Flash Read Succeeded!` |
 | `FLW` | see note below | Prompts (Y)es/(N)o, writes to SPI |
 
-**FLW test procedure** (safe round-trip):
+**FLW test procedure** (safe round-trip, on a scratch range inside the
+userdata partition rather than next to the bootloader):
 
 ```
-FLR 80500000 10000 100        Read 256 bytes from flash offset 0x10000
-DB 80500000 16                Verify contents
-FLW 10000 80500000 100        Write same data back (no-op, same content)
+FLR 80500000 F00000 10000     Read 64 KiB from flash offset 0xF00000
+FLW F00000 80500000 10000     Write the same data back: block erase + program + verify
+FLR 80600000 F00000 10000     Read it again
+CMP 80500000 80600000 10000   Must print "No error found"
 ```
+
+`FLW` reports `Flash Write Succeeded!` only after the read-back compare
+passed.  On the RAM-test build the verify can be made to fail on purpose:
+`EW <g_flash_verify_poison> 1` (address in `boot/build-ramtest/boot.nm`)
+corrupts one byte of the next read-back, which must produce
+`Flash verify FAILED at 0x...` followed by `Flash Write Failed!`.
 
 ### Execution commands
 
 | Command | Test | Expected |
 |---------|------|----------|
-| `J` | `J BFC00000` | Board reboots (watchdog reset) |
+| `J` | `J BFC00000` | Board reboots (watchdog reset, switch quiesced first) |
+
+### Fault paths (RAM-test build)
+
+| Trigger | Expected |
+|---------|----------|
+| `CMP 80500001 80500001 4` | unaligned word read → `cp0_cause=...` then `FATAL: unhandled exception`, `Resetting...`, board resets into the flash bootloader within ~5 s |
+| `DW <g_spurious_irq> 1` | counts interrupts taken with nothing pending; must stay 0 across a TFTP upload (address in `boot.nm`) |
+
+### Stage-1 fault paths (decompressor, RAM-test build)
+
+The decompressor in `test.bin` (`piggy.S` + `bootload.c`) reports a bad
+embedded stream on the console and halts instead of returning.  Test it
+from RAM with a deliberately corrupted copy of `test.bin` — never flash one:
+
+```bash
+OFF=$(printf '%d' 0x$(mips-lexra-linux-musl-nm btcode/build-ramtest/piggy.elf \
+      | awk '$3=="__boot_start"{print $1}'))
+OFF=$((OFF - 0x80100000))                      # 0x1100 for V3.1 (S12 + C1-b)
+cp test.bin test-badprops.bin
+printf '\xff' | dd of=test-badprops.bin bs=1 seek=$OFF conv=notrunc
+cp test.bin test-badsize.bin
+printf '\x01' | dd of=test-badsize.bin bs=1 seek=$((OFF + 9)) conv=notrunc
+cp test.bin test-badlc.bin
+printf '\x86' | dd of=test-badlc.bin bs=1 seek=$OFF conv=notrunc   # lc=8, lp=4: valid, 12 MiB of probabilities
+```
+
+| Image | Expected after `J 80100000` |
+|-------|-----------------------------|
+| `test-badprops.bin` | `LZMA: bad stream properties`, then nothing (halt) |
+| `test-badsize.bin` | `LZMA: bad stream size`, then nothing (halt) |
+| `test-badlc.bin` | `LZMA: workspace too large`, then nothing (halt) |
+
+The halt is permanent: the hardware watchdog is not running in stage-1.
+**Arm it from the prompt before the jump** so the board resets by itself
+instead of needing a power-cycle:
+
+```
+<RealTek>EW B800311C 00A20000
+<RealTek>J 80100000
+```
+
+`0xB800311C` is `WDTCNR`; the value enables the watchdog with `WDTCLR` set
+(`WDTE` field 0 = running).  Measured on the bench: the reset follows within
+about two seconds, which is plenty — the message is printed microseconds
+after the jump.  Use this only for a hang that happens **before** download
+mode is reached (a stage-1 fault, the LZMA halts above, an early stage-2
+crash): nothing has armed the watchdog yet at that point.
+
+Once the RAM-test build reaches download mode it **arms the watchdog itself
+and kicks it from the main loop** (`boot/include/ramtest_trace.h`, compiled
+in only under `RAMTEST_TRACE`; OVSEL 9, armed in `goToDownMode()`, kicked in
+`eth_poll()` at entry and after every packet, never from the interrupt
+handler).  A hang of the main loop after that point — a wedged receive path,
+an interrupt storm — therefore self-resets in a couple of seconds without the
+manual arm above; a healthy transfer, however long, is kicked continuously
+and never reset.  The breadcrumb page at `0xA1FFD800` (the upper half of the
+watchdog crash-record page, magic `RTMB`) survives the reset: read it back
+from the flashed loader with `DW A1FFD800 20` to see how far the hung run got
+(ISR count, run-out count, TFTP block and phase, any exception cause).
+
+The stage-1 DRAM message (`DDR calibration: no DQS window`) lives in
+`start.S` and cannot be exercised from RAM.  Do **not** provoke it with a
+build that alters `DDR_TEST_EXPECT`: that build applies DQS centre 16, and
+the bench box's real centre is 10 (`devmem 0x18001050` under Linux) — a
+centre outside the board's window bricks a Lidl.  The safe test build turns
+`bnez a2, DDCR_SHIFT_EXIT` into `bnez zero, DDCR_SHIFT_EXIT` (message printed,
+real centre applied).
+
+### Raw fullflash fault paths (flashed loader, nothing written)
+
+A raw 16 MiB image carries a CRC trailer at `0x1FFF0` (`lib/fullflash_crc.sh`);
+the loader refuses a mismatching or damaged trailer after the kernel checksum
+and before the first erase, so a refused upload is a safe test.  Build the
+images on the host, upload them at the `<RealTek>` prompt of the **flashed**
+loader with `AUTOBURN 1` and `LOADADDR 80500000`:
+
+```bash
+NET_MODE=static IPADDR=192.168.1.88 NETMASK=255.255.255.0 GATEWAY=192.168.1.1 \
+    ./build_fullflash.sh          # writes the trailer last
+cp fullflash.bin ff-badrootfs.bin
+printf '\x01' | dd of=ff-badrootfs.bin bs=1 seek=$((0x300000)) conv=notrunc   # flips one rootfs bit
+cp fullflash.bin ff-badtrailer.bin
+printf '\x00' | dd of=ff-badtrailer.bin bs=1 seek=$((0x1FFF3)) conv=notrunc   # damages the trailer
+```
+
+| Image | Expected after the upload |
+|-------|---------------------------|
+| `ff-badrootfs.bin` | `kernel checksum Ok !` then `fullflash CRC error: image …, trailer …`, `FAIL` on UDP:9999, prompt back |
+| `ff-badtrailer.bin` | `unrecognised data at 0x1fff0: not a CRC trailer`, `FAIL`, prompt back |
+| `fullflash.bin` | `fullflash CRC Ok ! (…, 770 ms)` then the two verified writes — this one flashes the box |
+
+These run from RAM too: a 16 MiB upload into a stage-2 loaded at
+`0x80100000` and jumped to now completes like any other (validated four
+times on the bench, `AUTOBURN 0`).  An earlier build hung on it — a
+descriptor run-out storm the RAM-test path exposed through its slow
+`putchar` and the client's retransmits, which starved the main loop; the
+flashed loader took the same upload in 26 s only because it rarely reached
+that state.  The loader no longer arms the run-out interrupt, masks it
+defensively in the ISR, and resyncs the rings from the main loop when the
+run-out stays asserted, so the storm cannot form; a run-out is now absorbed
+by the normal receive path (`swNic_receive` / `eth_poll`, counters
+`g_rx_runout` and `g_rx_resync`).
 
 ---
 
@@ -290,6 +415,23 @@ Upload images with known signatures and verify:
 |-------|-----------|-------------------|
 | `boot.bin` | `boot` | Flash to offset 0, no reboot |
 | `firmware.bin` | `cs6c` | Flash to kernel offset, auto-reboot |
+
+### Malformed packets (V3.1 length checks)
+
+`tests/tftp_probe.py` sends frames whose UDP/IP length fields lie about the
+payload (needs a raw socket, so `sudo`).  After each probe the board must
+still answer `ping`; the script prints PASS/FAIL:
+
+```bash
+sudo ./tests/tftp_probe.py 192.168.1.6
+```
+
+### Oversized upload
+
+With `LOADADDR 80500000`, uploading a file larger than the free RAM above
+it (27 MiB on the Lidl board) must stop with a TFTP "disk full" error on
+the client and `Upload does not fit at ...` on the console, and the board
+must still answer `ping`.
 
 ### Post-flash UDP notification test
 
@@ -350,7 +492,8 @@ Terminal 1 should display `FAIL` (no valid signature found).
 
 - Ensure `LOADADDR` was set to `80100000` (not `80000000`)
 - Ensure test.bin was built with `RAMTEST_TRACE` (check for
-  `---RAMTEST mode` in output)
+  `---RAMTEST mode` in output); it lives in `btcode/build-ramtest/`,
+  `btcode/build/boot.bin` is the flash image
 
 ---
 
@@ -362,7 +505,7 @@ Terminal 1 should display `FAIL` (no valid signature found).
 AUTOBURN 0
 LOADADDR 80100000
 # On PC (must cd into the directory first):
-cd /path/to/31-Bootloader/btcode/build
+cd /path/to/31-Bootloader/btcode/build-ramtest
 tftp -m binary 192.168.1.6 -c put test.bin
 # On serial console:
 J 80100000
@@ -372,8 +515,7 @@ J 80100000
 AUTOBURN 1
 # On PC:
 tftp -m binary 192.168.1.6 -c put boot.bin
-# On serial console (after "Flash Write Succeeded!"):
-J BFC00000
+# (board reboots automatically after "Flash Write Succeeded!")
 
 # === Flash firmware ===
 # On serial console:
@@ -382,4 +524,17 @@ AUTOBURN 1
 tftp -m binary 192.168.1.6 -c put firmware.bin
 # (board reboots automatically)
 
+```
+
+---
+
+## 8. Host-side unit tests
+
+The bound checks shared by the boot path, the TFTP receiver and the
+auto-flash path (`boot/include/checks.h`) are pure functions and are tested
+natively, including the negative cases that must never be staged on a board
+(a kernel header pointing into the loader, an upload wrapping over DRAM):
+
+```bash
+./tests/run_host_tests.sh
 ```

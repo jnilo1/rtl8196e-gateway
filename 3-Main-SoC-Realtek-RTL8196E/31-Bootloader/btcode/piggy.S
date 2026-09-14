@@ -1,6 +1,4 @@
-#include <asm/asm.h>
-#include <asm/regdef.h>
-#include <asm/mipsregs.h>
+#include "boot_asm.h"
 
 	.text
 	.set noreorder
@@ -9,35 +7,11 @@
 /*---------------------------------------------------------------------------*/
 /* Stage-1.5 entry point                                                     */
 /* This code runs from RAM after being copied by the stage-1 bootloader.     */
+/* Nothing but code lives here: the stage-2 payload is the .initrd section  */
+/* appended by the Makefile, and the DDR controller was configured by       */
+/* stage-1 (start.S) before this code was even copied to RAM.               */
 /*---------------------------------------------------------------------------*/
 __start:
-	j	1f
-	nop
-
-/*---------------------------------------------------------------------------*/
-/* Register initialization data table                                        */
-/* Format: <address>, <value> pairs to be written sequentially               */
-/*---------------------------------------------------------------------------*/
-	.align 2	/* Ensure 32-bit alignment for .word data */
-
-regdata:
-	/* UART configuration */
-	.word	0xb8001008, 0xffff05c0		/* Offset 0x08 */
-	.word	0xb8001004, 0x54480000		/* Offset 0x10 */
-	.word	0xb8001050, 0xD2800000		/* Offset 0x18 */
-	
-	/* Multiple writes to same register (0xb8000010) */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x20 */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x28 */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x30 */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x38 */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x40 */
-	.word	0xb8000010, 0x017FFD2E		/* Offset 0x48 */
-
-/*---------------------------------------------------------------------------*/
-/* Main code section                                                         */
-/*---------------------------------------------------------------------------*/
-1:
 	/* Setup stack pointer */
 	la	t0, __bss_end
 	nop
@@ -48,3 +22,13 @@ regdata:
 
 test:
 	jal	boot_entry			/* Jump to C entry point */
+	nop					/* delay slot (was memcpy's first word) */
+
+	/*
+	 * boot_entry() does not return: on a bad stream it reports and
+	 * stops by itself.  Should it ever return, stop here rather than
+	 * fall into whatever the linker placed next (memcpy today).
+	 */
+piggy_halt:
+	b	piggy_halt
+	nop

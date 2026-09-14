@@ -1,9 +1,12 @@
 # Stage-1 bootloader Makefile (btcode)
 #
 # Builds the first code that runs from flash on the RTL8196E.  start.S
-# performs minimal CPU init (cache flush, BSS clear, stack setup) then
-# jumps to the LZMA decompressor (bootload.c + LzmaDecode.c) which
-# unpacks the stage-2 bootloader into RAM and transfers control to it.
+# runs in place from flash: SoC patch, UART0 banner, DDR controller
+# bring-up and DQS calibration, cache flush, then it copies the embedded
+# decompressor (piggy.S + bootload.c + LzmaDecode.c) to RAM and jumps to
+# it; piggy.S sets the stack and the decompressor unpacks the stage-2
+# bootloader into RAM and transfers control to it.  No BSS is cleared
+# anywhere (the decompressor has none).
 #
 # Build pipeline:
 #
@@ -24,16 +27,19 @@
 #     v
 #   boot.bin        (final flash image)
 #
-# When RAMTEST_TRACE=1, piggy.bin is copied as test.bin (in build/)
-# instead of wrapping boot.bin for flash.  The top-level Makefile
-# builds both variants automatically.
+# When RAMTEST_TRACE=1, piggy.bin is also copied as test.bin.  The two
+# variants build into separate directories (build/ for the flash image,
+# build-ramtest/ for the RAM-test image), so btcode/build/boot.bin is
+# always the production image.  The top-level Makefile builds both.
 #
 # Targets:
-#   bootload - build boot.bin or test.bin (default)
+#   bootload - build boot.bin (and test.bin under RAMTEST_TRACE) (default)
 #   clean    - remove build outputs
 #
 # Variables:
 #   RAMTEST_TRACE - set to 1 for the RAM-test image variant
+#   OUTDIR        - object directory (build, or build-ramtest)
+#   BOOT_OUT      - stage-2 ELF to embed (default ../boot/$(OUTDIR)/boot.out)
 #   CVIMG         - path to the Realtek cvimg header tool
 #   CVIMG_FLAGS   - flags for cvimg (image type, addresses)
 #   LZMA          - path to the LZMA compression tool
@@ -49,7 +55,7 @@ CVIMG       ?= $(HOME)/rtl8196e-gateway/1-Build-Environment/11-realtek-tools/bin
 CVIMG_FLAGS ?= -t boot -c any -e 0x0 -b 0x0
 LZMA        ?= $(HOME)/rtl8196e-gateway/1-Build-Environment/11-realtek-tools/bin/lzma
 
-OUTDIR = build
+OUTDIR ?= build
 
 # --- Board selection ---------------------------------------------------------
 # Per-board constants (DRAM size/top, DDR bring-up) live in
@@ -61,14 +67,14 @@ BOARD ?= lidl
 
 CFLAGS = -Os -g -G 0 \
          -fomit-frame-pointer -fno-pic -mno-abicalls \
-         -ffreestanding -fno-common -D__KERNEL__ \
+         -ffreestanding -fno-common -MD \
          -I../boards/$(BOARD)
 
 ifeq ($(RAMTEST_TRACE),1)
 CFLAGS += -DRAMTEST_TRACE
 endif
 
-BOOT_OUT = ../boot/build/boot.out
+BOOT_OUT ?= ../boot/$(OUTDIR)/boot.out
 
 # --- Build rules ------------------------------------------------------------
 
@@ -124,4 +130,4 @@ $(OUTDIR):
 	@mkdir -p $@
 
 clean:
-	rm -rf $(OUTDIR)
+	rm -rf build build-ramtest

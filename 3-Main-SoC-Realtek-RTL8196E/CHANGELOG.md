@@ -6,6 +6,257 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.5.0] - 2026-09-14
+
+### Docs — Ethernet driver performance file reduced to two release tables
+
+`files-<line>/drivers/net/ethernet/rtl8196e-eth/PERFORMANCE.md` now opens with one
+table per kernel line (stable 6.18, development 7.x): TCP RX, TCP TX, UDP RX at
+100 Mbit/s offered and UDP TX unconstrained per release, all from the standard release
+bench, with 6.18.51 and 7.2.5 added. The 1 500-line campaign record that followed
+(per-driver-version gate runs, paired A/B experiments, CPU decompositions) left the
+tree and stays readable from git history (`git show bb1c874:<path>`), as the file's
+closing section says.
+
+### Kernel — Linux 6.18.45 → 6.18.51 on the production line, 7.1.9 (EOL) → 7.2.5 on the experimental line
+
+Both lines move and the four shipped images (`{lidl, sengled-e39-g8c}` × `{6.18, 7.2}`)
+are regenerated. The 7.1 line is retired: 7.1.13 went end-of-life upstream on
+2026-09-02, and the experimental line now follows kernel.org's latest stable, never a
+release candidate. `KERNEL=7.2` replaces `KERNEL=7.1` everywhere (`flash_install`,
+`flash_remote`, `build_fullflash`, `lib/kernel_image.sh`, the CI patch lint). The
+patch sets apply at offset 0 with no fuzz on both new trees (one refresh on 6.18,
+seventeen on 7.2, `do_IRQ` having gained an `asmlinkage` upstream); the I-MEM
+policies were carried over by rename and are verified structurally by every build.
+
+**6.18.51 ships with a text placement layout, the first of its kind here.** The point
+release changes no per-packet code (33 hot functions compared instruction by
+instruction, identical) and no I-MEM content, yet costs 2.1 Mbit/s of TCP TX on the
+release bench: 124 small upstream size changes ahead of `net/` in link order shear
+the SDRAM text so that every hot function lands on a different I-cache colour
+(address modulo 8 KiB on this 2-way, 512-set cache). Re-profiling the I-MEM
+selection did not recover it — the PC sampler attributes the stalls to the
+recoloured functions and follows them. What does recover it is putting the
+TX-dominant zones back on the 6.18.45 colours while leaving the RX-dominant ones
+(`csum_partial`, GRO, `eth_type_trans`) exactly on their 6.18.51 colours: eight
+never-executed pad objects (49 KiB of `.space`, `scripts/imem/layouts/6.18.51/`),
+inserted in `obj-y` order and kept by `-u`, no function changed, the section order
+proven identical. The pre-registered 24-point paired confirmation
+(`confirm_candidates.sh`, fresh flash and reboot per point) against the same kernel
+without pads: **TX +1.80 Mbit/s, 95 % [+1.35, +2.25]; RX +0.81, [+0.55, +1.06];
+CONFIRMED.** Restoring every zone instead (the first attempt) had bought the same TX
+with −1.6 RX; the RX-neutral compromise is what ships. Every production build now
+verifies the layout (`scripts/imem/text_layout.py verify`: toolchain, config, pad
+addresses and sizes, the forty tracked functions' addresses, the whole text
+sequence, no reference into a pad) and fails on any drift; a future point release
+starts unpadded, and `scripts/imem/propose_text_pads.py` proposes — never accepts —
+its own layout. The 7.2.5 line is unpadded.
+
+Two harness defects surfaced on the way and are fixed independently: the
+`--reset` step of the I-MEM hole tool stamped restored objects with a fresh mtime,
+so `make` never recompiled a source of a hole object edited since the last build;
+and `confirm_candidates.sh` read its round plan on the stdin that its own `ssh`
+calls drained, so no 24-point confirmation had ever run past the first round (the
+three August runs on 6.18.45 stopped there too).
+
+### Changed: otbr-agent / ot-ctl — ot-br-posix v2026.07.0 → v2026.09.0
+
+The Thread Border Router moves two upstream releases forward (`otbr-agent --version`
+now reports `…-549-gfd872ab9`). Upstream brings Border Agent ephemeral-key (ePSKc)
+REST endpoints, `If-None-Match` on the dataset PUT endpoints, and a per-route method
+registry that fixes 404/405/OPTIONS answers. The two Home Assistant compatibility
+edits were rebased onto the new layout: the REST JSON keys are now rewritten to
+PascalCase in `src/rest/names.hpp` (upstream moved every key literal there), and the
+`/api/actions` routes are disabled through their new `Register<Method>(…)`
+registrations — an unregistered path still answers 404, so python-otbr-api keeps
+selecting the PascalCase parser. The software-flow-control patch for the RCP UART
+applied unchanged.
+
+### Changed: nano 9.0 → 9.2
+
+The on-device editor (`nano`, and `vi` which points at it) is rebuilt from upstream
+9.2; two upstream bugfix releases folded in, no change to the build options or to
+the static ncurses 6.6 it links against.
+
+### Bootloader — V3.1, the audit implemented
+
+For the user, V3.1 means two things. **Safer flashing**: every byte written to the flash is
+read back and compared, an image whose CRC or kernel checksum is wrong is refused before the
+first erase, an oversized or misplaced upload is refused before anything is touched, and a
+failure is reported as `FAIL` on the console and on UDP:9999 instead of a confident `OK`
+followed by a reboot into nothing — a bad cable, a corrupted download or a flash chip on its
+way out can no longer brick a gateway silently. **Faster flashing**: a full 16 MiB install
+writes in 61 s instead of 108 s, verification included, so `flash_install` finishes in
+about 2 min 30 instead of 3 min 15. Behind that, the loader that was inherited from the
+Realtek SDK has been audited line by line: nothing network-related runs in interrupt
+context any more, every former infinite loop reports and resets, stage-1 says why it fails
+instead of hanging, and the code base is a quarter of its former size with no inherited
+header left.
+
+_The audit of V3.0 (`31-Bootloader/doc/AUDIT.md`, with a status table of every item) is
+implemented in both stages. Every stage-2 change was validated on the Lidl bench from RAM
+(`test.bin`), then from the flashed loader; the stage-1 changes, which only run from flash,
+were validated by flashing on the same board with the console captured over repeated cold
+boots. Both per-board `boot-img/*/boot.bin` are rebuilt from the V3.1 source and are
+reproducible bit-for-bit; the Sengled image shares every line but has not run on a G4 yet._
+
+Flash writes are read back. Every 4 KiB sector or 64 KiB block programmed is compared with
+the source before the next one, so a page-program failure or a stuck status bit ends in
+`Flash Write Failed!` and a `FAIL` on UDP:9999 instead of a confident `OK` followed by a reboot
+into nothing — that path was unreachable before: the write loop could not return failure.
+Whole blocks are erased with one block-erase command instead of sixteen sector erases; on
+the bench the 1.44 MiB kernel is erased, programmed and verified in 8.7 s. The raw 16 MiB
+fullflash writes the kernel, rootfs and userdata first and the bootloader partition last,
+after the kernel checksum inside the buffer has been verified, which shrinks the window
+during which the board has no bootloader from the whole transfer to the final two blocks.
+Writes are refused when the JEDEC capacity byte does not say 16 MiB; the banner now prints
+the raw ID next to the family name.
+
+The TFTP server and the flash writer no longer run inside the Ethernet interrupt handler.
+The handler only acknowledges the switch; frames are drained from the main loop while the
+console waits for a keystroke. The timer therefore keeps ticking during a write, the blind
+delay loop before the post-flash reboot and the interrupt-mask hack in the MDIO read are
+gone, the 4 KiB sector buffer moved off the stack, and each of the four transmit
+descriptors got its own buffer so a back-to-back ACK and notification can no longer
+overwrite a frame the switch is still reading. With the handler acking only, the receive
+side had to stop arming the switch's descriptor-run-out interrupt: that status is
+level-triggered, so an armed mask turned the first run-out — the RX ring of four
+descriptors emptying faster than the main loop refills it under a long upload — into a
+self-sustaining interrupt storm that starved the loop and froze the loader. The loader now
+never arms that mask, masks it defensively in the handler, and rebuilds both rings from the
+main loop when the switch stays stalled; an ordinary run-out is absorbed as the ring
+advances. This mirrors what the kernel's own Ethernet driver already does, and is the same
+recovery it uses.
+
+Network input is bounded. IP and UDP length fields are checked against what the NIC
+delivered, a TFTP data block must carry 0–512 bytes, an upload that would run into the
+exception vectors, the running loader or the two reserved pages at the top of DRAM is
+refused with a TFTP error, `LOADADDR` refuses those regions, the ICMP echo copies only what
+was received, and an image header claiming more bytes than were uploaded, a destination
+outside the chip or off a sector boundary is rejected before anything is erased. The walk
+over the uploaded package stops at trailing padding — a run of `0x00` (what `cvimg -a`
+appends to every `kernel-*.img`) or of `0xFF` up to the end of the upload — instead of
+reading it as a foreign header: the first cut of the preflight refused every shipped kernel
+image on a kernel-only flash (`auto-flash package rejected before write`), a case the
+legacy loop had only tolerated by accident, and one that `flash_install` never exercises
+because a raw 16 MiB image takes the fullflash path. The kernel
+header read from flash at boot is held to the same rules: a corrupted start address is
+treated as "no image", which lands in download mode instead of a hang before the ESC
+check. These checks are pure functions (`boot/include/checks.h`) with a native unit test.
+
+Every former infinite loop (unregistered interrupt, unhandled exception, allocation
+failure, switch table failure) now reports, waits a few seconds, clears the boothold
+hand-off and resets through the watchdog. Exercising that path on the bench exposed an
+inherited defect: the unhandled-exception handler read the saved registers through a
+pointer the exception dispatcher never fills, so a real exception (an unaligned access, a
+bus error) hung the board silently inside a nested fault instead of reporting; it now reads
+the CP0 cause, EPC and bad address only. The per-boot CPU-speed calibration that only fed
+the banner is dropped (about 0.2 s per boot). The `J` command quiesces the switch with the
+same sequence as the kernel hand-off. Dead code from the SDK is removed (watchpoint
+handler, CPU-clock switcher, legacy Tuya settings blocks read from flash on every
+download-mode entry).
+
+The 16 MiB full-flash image carries a 16-byte CRC trailer at the end of the bootloader
+partition (`0x1FFF0`), written by `build_fullflash.sh`, `create_fullflash.sh` and
+`backup_gateway.sh`. The loader checks it after the kernel checksum and before the first
+erase: an image whose CRC does not match, or whose trailer bytes are neither a trailer nor
+blank, is refused with `fullflash CRC error` while the board is still answering. The
+follow-up hardening makes the trailer mandatory for raw fullflash uploads: all-`0xFF` is
+also refused before erase. The check takes 0.7 s for 16 MiB.
+
+Stage-1 no longer fails silently. The DQS calibration prints `DDR calibration: no DQS
+window` when its sweep finds no passing delay, then applies the historical centre and
+continues, because a halt on a false positive would brick a board without a recovery
+strap; the decompressor prints `LZMA: bad stream size`, `bad properties`, `decode failed`
+or `workspace too large` (a properties byte whose probability array would not fit in the
+window below the target) and halts instead of jumping into garbage. The dead register
+table and the jump that skipped it are gone from the decompressor entry, the unreachable
+MCM DDR1 selector from `start.S`: the DRAM controller values come from `boards/<board>/
+board.h` and nothing reads the hardware strap.
+
+The TFTP state machine is a `switch` on the event with the three state tests where the
+former 3 × 8 table differed, cell for cell; the retransmit window and the port handling are
+untouched, and the regression on the bench (back-to-back uploads, a client killed
+mid-transfer, DATA/ERROR/OACK from idle, ERROR during an upload) behaved identically to
+the previous loader.
+
+Two audit items were tried and deliberately kept as they were, with the record in the
+audit: dropping the 10 ms delay per MDIO read hangs the switch controller on PHY 1
+register 6 (reproduced), so the SDK's "test chip patch" is a real hardware workaround; and
+the 10.8 KiB of I-MEM alignment padding in the image compress to nothing and cost nothing
+worth the risk of touching the `head.S` fill.
+
+The build is tidied. Stage-2 compiles with `-Wall -Wextra` and a set of `-Werror=`
+promotions at zero warnings; the RAM-test variant builds into its own directory so
+`btcode/build/boot.bin` is always the flash image; the version and the pinned build
+timestamp live together in `ver.h`; the top-level `Makefile` forwards to
+`build_bootloader.sh`, the one recipe. The loader now owns every header it compiles: the
+87 Linux 2.4 / Realtek SDK headers it dragged along (13,000 lines, a few hundred of them
+used) are gone, replaced by 15 files and 1,774 lines in which every name has a use, the
+switch registers reduced to those addressed as in the kernel driver, and the only headers
+from outside the tree are the compiler's own `<stdint.h>`, `<stddef.h>` and `<stdarg.h>` —
+`build_bootloader.sh` fails on any sysroot include. Each step of that work kept both board
+images byte-identical, and the preprocessed form of every translation unit was reviewed
+(`tests/preproc_diff.py`); the three re-spellings that did change the image (`REG32` for
+the interrupt mask, a C `strcmp`, a 32-entry IRQ table) were then validated from RAM.
+
+Measured against the V3.0 of v4.4.0 (`tests/loc.sh` for the lines of code, comments and
+blank lines excluded; six full-flash runs of `flash_install_rtl8196e.sh` on the Lidl bench,
+console timestamped on the host, medians):
+
+| | V3.0 (v4.4.0) | V3.1 | |
+|---|---:|---:|---|
+| sources, lines of code (C + assembler, both stages) | 5,383 | 4,705 | −13 %, with the additions above included |
+| headers, lines of code | 9,092 | 1,242 | −86 %, 91 → 19 files, none inherited |
+| `boot.bin`, the flash image | 22,498 B | 21,690 B | −808 B |
+| stage-2 `.text` | 53,404 B | 53,640 B | +236 B: the bound checks, the CRC trailer, `fatal` |
+| stage-2 `.bss` | 83,056 B | 96,128 B | +13 KiB: the two static sector buffers of the verified write |
+| TFTP upload of the 16 MiB image | 21.2 s | 21.7 s | unchanged |
+| flash write | 107.8 s | 61.2 s | −43 %: block erase instead of sector erase, with the CRC check (0.7 s), the kernel checksum and the read-back of every unit now included |
+| `fullflash.bin` build and reboot (host side) | 66 s | 64 s | independent of the loader |
+| whole `flash_install_rtl8196e.sh` | 195 s | 147 s | −48 s, all in the write |
+
+Bench validation (Lidl, from RAM): console checklist, `LOADADDR` refusals, FLR/RRQ round
+trip, 100 KiB upload and read-back, 64 KiB block and partial-sector `FLW` round trips with
+`CMP`, an injected read-back mismatch reported as a failed write, two kernel auto-flashes
+(1.44 MiB uploaded in 13.9 s wired, written and verified in 8.7 s, `OK` received on
+UDP:9999) with automatic reboot into the new kernel, a forced unaligned access ending in
+`FATAL: unhandled exception` and a watchdog reset, the LZMA negative tests on a corrupted
+header; then, from the flashed V3.1, a 28 MiB upload refused at `0x81FFD000` with the board
+still answering, the malformed-frame probe (`tests/tftp_probe.py`), a full-flash with a
+flipped rootfs byte refused on its CRC, and the real 16 MiB install through
+`flash_install_rtl8196e.sh` repeated six times for the figures above, each followed by a
+clean boot with the preserved configuration. The stage-1 changes were flashed and checked
+over eight cold power-cycles with the console captured and `mtd0` read back. The
+descriptor-run-out fix was validated by uploading the full 16 MiB image into a RAM-loaded
+`test.bin` four times (which used to freeze the loader and now completes, about 67 run-outs
+absorbed with no ring rebuild), then by flashing the fixed loader to the bench and running
+one more real full-flash to a clean boot.
+
+### Bootloader — recovery hardening follow-up
+
+The recovery update path is narrower and fails more safely.  A TFTP transfer is now
+owned by the MAC address, IPv4 address and UDP port that opened it, so another machine
+on the recovery LAN cannot advance or abort an active transfer.  Auto-flash preflights
+the complete cvimg package before the first erase and accepts only known image types in
+their fixed partitions; ambiguous `ALL2` containers, overlapping members and out-of-layout
+writes are rejected.  `FLR` is held inside flash geometry and `FLW` may source only the
+free RAM window.
+
+The decompressor now rejects a zero, truncated, incomplete or over-1-MiB stage-2 LZMA
+output before it jumps.  This is a stage-1.5 validation change only: the reset vector,
+DDR register values, stage-1 linker script and flash-to-DRAM copy path are unchanged.
+SPI controller/NOR, switch-table and MDIO waits are bounded; a flash timeout latches the
+flash path read-only and an Ethernet setup failure leaves the serial recovery monitor
+available.  The host TFTP retry probe now proves it sent its deliberately invalid WRQ,
+preventing an ambiguous retry while NOR may already be writing.
+
+Raw fullflash uploads now require a valid `FFCS` CRC trailer; the legacy all-`0xff`
+trailer is refused before erase.  These safeguards intentionally do not add image signing,
+A/B slots or restrictions on the trusted physical serial monitor.  Both board production
+and RAM-test builds plus their host tests pass.  The Lidl image was flashed through the
+boot-hold workflow on `.88`, returned UDP `OK` after verification, and rebooted into Linux.
+
 ## [4.4.0] - 2026-09-10
 
 _A bootloader release. Interrupting the boot with `Esc` stops being a knack and becomes

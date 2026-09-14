@@ -45,7 +45,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # version of 2026.5 AND switches its callers to camelCase.
 # To update: check https://github.com/openthread/ot-br-posix/releases
 #            or test with: ./build_otbr.sh main
-OTBR_DEFAULT="v2026.07.0"  # released 2026-07-01, openthread submodule c34311ff5
+OTBR_DEFAULT="v2026.09.0"  # released 2026-09-01, openthread submodule 2a8b4a57edb1
 BRANCH="${1:-$OTBR_DEFAULT}"
 SOURCE_DIR="${SCRIPT_DIR}/ot-br-posix"
 BUILD_DIR="${SCRIPT_DIR}/build"
@@ -87,7 +87,10 @@ fi
 # python-otbr-api up to 2.9.x expects PascalCase exclusively;
 # 2.10.0+ (HA Core 2026.5+) auto-detects but only accepts PascalCase
 # when patch 2 below has neutralised the /api/actions probe.
-JSON_CPP="${SOURCE_DIR}/src/rest/json.cpp"
+# The key literals live in src/rest/names.hpp since v2026.08.0 (#3296,
+# "standardize attribute naming"); older tags keep them in json.cpp.
+JSON_CPP="${SOURCE_DIR}/src/rest/names.hpp"
+[ -f "$JSON_CPP" ] || JSON_CPP="${SOURCE_DIR}/src/rest/json.cpp"
 if [ -f "$JSON_CPP" ] && grep -q '"activeTimestamp"' "$JSON_CPP"; then
     echo "==> Patching REST JSON keys to PascalCase (HA compatibility)..."
     sed -i \
@@ -125,16 +128,20 @@ fi
 # REST schema: 200 → camelCase mode, 404 → PascalCase mode.  Since
 # patch 1 above forces PascalCase JSON, we must also force the probe
 # to fail so the library picks the matching parser.  Comment out the
-# six route registrations.  HA Core itself does not call /api/actions
+# route registrations.  HA Core itself does not call /api/actions
 # (it only uses the older /node/* endpoints), so nothing of value is
 # lost.  See AUDIT.md and CHANGELOG.md (v3.4.x) for the analysis.
+# Two registration syntaxes: `mServer.Get(...)` up to v2026.07.0,
+# `RegisterGet(...)` since the per-route method registry (#3546,
+# v2026.09.0) — an unregistered path still answers 404 there
+# (RoutingErrorHandler only upgrades to 405 when the path is known).
 REST_CPP="${SOURCE_DIR}/src/rest/rest_web_server.cpp"
+ACTIONS_ROUTE_RE='(mServer\.(Get|Post|Delete|Options|Put|Patch)|Register(Get|Post|Delete|Options|Put|Patch))\(OT_REST_ROUTE_ACTIONS'
 if [ -f "$REST_CPP" ] && \
-   grep -qE '^[[:space:]]*mServer\.(Get|Post|Delete|Options|Put|Patch)\(OT_REST_ROUTE_ACTIONS' \
-        "$REST_CPP"; then
+   grep -qE "^[[:space:]]*${ACTIONS_ROUTE_RE}" "$REST_CPP"; then
     echo "==> Disabling /api/actions routes (HA 2026.5+ camelCase fallback trigger)..."
     sed -i -E \
-        's#^([[:space:]]*)(mServer\.(Get|Post|Delete|Options|Put|Patch)\(OT_REST_ROUTE_ACTIONS)#\1// PATCHED HA-compat: \2#' \
+        "s#^([[:space:]]*)(${ACTIONS_ROUTE_RE})#\\1// PATCHED HA-compat: \\2#" \
         "$REST_CPP"
 fi
 

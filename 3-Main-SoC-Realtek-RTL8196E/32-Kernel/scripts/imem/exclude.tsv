@@ -1,0 +1,4 @@
+# I-MEM selection exclusions: section<TAB>reason. A listed section is never eligible,
+# whatever its samples say. Add here init-time code and any function whose runtime
+# call context is not established (samples alone do not prove a hot path).
+.text.tlb_init	init-time TLB setup (arch/mips/mm/tlb-r3k.c); 26 samples on a 180 s capture unexplained, call context not established

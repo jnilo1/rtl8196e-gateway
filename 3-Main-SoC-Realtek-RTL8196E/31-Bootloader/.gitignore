@@ -1,17 +1,9 @@
 # Ignored directories
-23-Bootloader/
 .claude/
 
 # Personal notes
 RESUME_BOOTLOADER.md
 
-# btcode artifacts (not covered by root .gitignore)
-src/btcode/*.gz
-src/btcode/*.map
-src/btcode/cvimg
-src/btcode/lzma
-src/btcode/lzma-24
-src/btcode/lzma-26
-
-# Config script artifacts
-src/config/scripts/lxdialog/lxdialog
+# RAM-test build outputs (the production build/ is ignored by the root .gitignore)
+boot/build-ramtest/
+btcode/build-ramtest/

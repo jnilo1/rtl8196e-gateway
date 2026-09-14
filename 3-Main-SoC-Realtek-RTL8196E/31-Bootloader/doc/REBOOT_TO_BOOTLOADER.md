@@ -112,10 +112,10 @@ narrow but reliable window:
   scratch the kernel touches during early init.  The kernel is loaded
   at phys `0x00500000` and never grows past ~24 MB even with maximum
   rootfs/userdata cache pressure.
-- **Below** the btcode stack, which initialises at top-of-RAM
-  (`0x82000000`) and grows down through `0x81FFFFFF` (= phys
-  `0x01FFFFFC`).  In practice the stack uses well under 4 KB, so
-  the page just below the stack page is untouched.
+- **Below** the top page, which produced false HOLD detections on cold
+  boots when it was tried (see "Design alternatives").  The loader itself
+  never writes either page: stage-1 runs without a stack and stage-2's
+  stack lives inside its own BSS at `0x8041xxxx`.
 - **Reserved** in the device tree as `reserved-memory` with `no-map`,
   so the kernel page allocator skips it and there's no MMU mapping —
   no KSEG0/KSEG1 coherency conflict, no cache aliasing risk.
@@ -149,13 +149,14 @@ shutdown.
 | Region                                  | Address range                    | Status    |
 |-----------------------------------------|----------------------------------|-----------|
 | Exception vectors                       | `0x80000000 – 0x800001FF`       | Avoid     |
-| DDR calibration                         | low DRAM scratch                | Avoid     |
-| DDR size detection                      | power-of-2 offsets in `0xA0000000` window | Avoid |
-| Stage-1.5 piggy decompressor scratch    | `0x80100000+`                   | Avoid     |
+| DDR calibration (stage-1 DQS sweep)    | low DRAM scratch                | Avoid     |
+| Stage-1.5 piggy decompressor + payload  | `0x80100000+`                   | Avoid     |
 | LZMA workspace                          | `0x80300000`                    | Avoid     |
-| Kernel image (loaded by btcode)         | `0x80500000 – ~0x81E00000`      | Avoid     |
+| Stage-2 loader (code, BSS, stack, heap) | `0x80400000 – _end`             | Avoid     |
+| Kernel image (loaded by stage-2)        | `0x80560000 – ~0x806C0000`      | Avoid     |
+| Watchdog crash record (kernel DTS)      | `0x81FFD000 – 0x81FFDFFF`       | Avoid     |
 | **Boot-hold flag**                      | **`0x81FFEFFC`** (KSEG0)        | **Used**  |
-| btcode stack page (grows down from top) | `0x81FFF000 – 0x81FFFFFF`       | Avoid     |
+| Top page (false HOLDs on cold boot)     | `0x81FFF000 – 0x81FFFFFF`       | Avoid     |
 
 ---
 
@@ -271,11 +272,11 @@ Tested on the Lidl Silvercrest gateway (RTL8196E, 32 MB DDR2):
 
 ### Top of DRAM (last page, `0x01FFF000–0x01FFFFFF`)
 
-Rejected: the btcode initialises the stack pointer at `0x82000000` and
-pushes data into the page at `0x81FFFFFC` during DDR calibration on
-every boot (including cold power-on), producing false HOLD detections.
-The page one below (the current location) is far enough that even deep
-stack frames don't reach it.
+Rejected: it produced false HOLD detections on cold power-on.  The
+writer was never identified — stage-1 has no stack and stage-2's stack is
+inside its own BSS, so it is the kernel or the stock loader, not our
+bootloader.  The page one below (the current location) was found clean by
+experiment; do not move it without re-running that experiment.
 
 ### Low DRAM (`0x003FFFFC`, the v2.x location)
 

@@ -180,7 +180,11 @@ Fix:
 ## Notes on Critical Flags
 
 - `-G 0`: disables `.sdata/.sbss` and avoids `$gp` usage in btcode.
-- `-ffreestanding`: disables hosted assumptions in the compiler.
+- `-ffreestanding`: disables hosted assumptions in the compiler. Since V3.1 it
+  is also what keeps `<stdint.h>`/`<stddef.h>` the compiler's own
+  (`stdint-gcc.h`) rather than the sysroot's: the loader owns every other
+  header it uses, and `build_bootloader.sh` fails on any sysroot path in the
+  `-MD` dependency files.
 - `-fno-common`: avoids implicit common symbols; forces real definitions.
 - `-fgnu89-inline`: was used early in the port; later removed in favor of
   C99 inline semantics.
@@ -203,6 +207,16 @@ Recommended build order:
 Reproducibility:
 - `BOOT_CODE_TIME_OVERRIDE` can be used to pin the banner timestamp and
   produce byte-identical outputs.
+
+## Headers (V3.1)
+
+The Linux 2.4 `asm/` and `linux/` headers the RSDK shipped were pruned and then
+removed (2026-09-12). The loader's own headers
+carry everything: `boot_asm.h` (CPU — also included by `btcode/start.S` and
+`piggy.S`), `boot_soc.h` (SoC register map and accessors), `boot_irq.h`
+(`cli`/`sti`, `irqaction`), `boot_common.h` (gcc's `<stdint.h>`/`<stddef.h>`),
+`stdlib.h` (what `libc.c` and `calloc.c` provide), `swcore_regs.h` / `swcore.h`
+(switch registers and driver API) and `boot_net.h` (frame formats, eth/TFTP API).
 
 ## File Locations of Key Logic
 

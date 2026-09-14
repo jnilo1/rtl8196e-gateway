@@ -21,7 +21,6 @@
 
 #define MAX_ARGV 20
 #define MAX_MONITOR_BUFFER 128
-#define PAGE_ECHO_HEIGHT 18
 
 #ifndef TRUE
 #define TRUE 1
@@ -37,7 +36,5 @@ typedef struct {
 	int (*func)(int argc, char *argv[]);
 	const char *msg; // Help message
 } COMMAND_TABLE;
-
-extern int dprintf(const char *fmt, ...);
 
 #endif

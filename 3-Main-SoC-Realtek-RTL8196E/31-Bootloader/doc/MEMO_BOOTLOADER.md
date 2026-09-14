@@ -44,13 +44,14 @@ Used on routers/gateways with SPI flash and SDRAM.
    - Decompresses stage 2 (LZMA) to `0x80400000`
    - Jumps to stage 2
 
-2. **Stage 2** (`boot/`): Full bootloader
-   - Initializes SDRAM, Ethernet switch, GPIO
+2. **Stage 2** (`boot/`): Full bootloader (DRAM is already up — stage 1 did it)
+   - Initializes console, heap, interrupts, timer tick, SPI flash
    - Displays banner
-   - Scans flash for a valid firmware image
-   - During image copy, polls for ESC key (configurable timeout)
-   - Normal mode -> loads kernel from flash
-   - Download mode -> TFTP server + console
+   - Scans flash for a valid firmware image and copies it to RAM
+   - While checksumming the copy, polls the console for ESC every 64 KiB
+     (no timed window: hold the key, or use `boothold` from Linux)
+   - Normal mode -> jumps to the kernel (switch quiesced first)
+   - Download mode -> Ethernet switch up, TFTP server + console
 
 ---
 
@@ -87,33 +88,32 @@ Available services:
 ### ESC key detection: `main.c`
 
 ```c
-int pollingDownModeKeyword(int key)
+static int pollingDownModeKeyword(int key)
 {
     int ch;
 
-    if (g_uart_peek >= 0)
-        return 0;
-    if (!uart_data_ready())
-        return 0;
-
-    ch = uart_getc_nowait();
-    if (ch == key) {       // key = 0x1B (ESC)
-        gCHKKEY_HIT = 1;
-        return 1;          // DOWN_MODE
+    /* Drain the whole FIFO looking for the key (V3.0): one stray byte
+     * ahead of ESC used to hide it for the rest of the boot. */
+    while (uart_data_ready()) {
+        ch = uart_getc_nowait();
+        if (ch == key) {       // key = 0x1B (ESC)
+            gCHKKEY_HIT = 1;
+            return 1;
+        }
+        /* Keep the first non-matching character for the monitor */
+        if (g_uart_peek < 0)
+            g_uart_peek = ch;
     }
-
-    /* Stash the character so serial_inc() can return it later */
-    g_uart_peek = ch;
     return 0;
 }
 
-int user_interrupt(unsigned long time)
+int user_interrupt(void)
 {
     return pollingDownModeKeyword(ESC);
 }
 ```
 
-Note: The reset button / GPIO detection has been removed in this simplified version. Only ESC key over UART triggers download mode. Characters received that are not the escape key are stashed in `g_uart_peek` so they are not lost.
+Note: The reset button / GPIO detection has been removed in this simplified version. Only ESC key over UART triggers download mode. The first character received that is not the escape key is stashed in `g_uart_peek` so it is not lost.
 
 ---
 
@@ -123,8 +123,8 @@ Note: The reset button / GPIO detection has been removed in this simplified vers
 
 | Parameter | Value |
 |-----------|-------|
-| Server IP (bootloader) | 192.168.1.6 |
-| Expected client IP | 192.168.1.116 |
+| Server IP (bootloader) | 192.168.1.6 (default; `IPCONFIG` or `boothold <ip>` override it) |
+| Client IP | learned from the first request |
 | TFTP port | **2098** (non-standard) |
 | Standard TFTP port | 69 (used for WRQ reception) |
 
@@ -158,31 +158,29 @@ void showBoardInfo(void)
 ### Typical output
 
 ```
-Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
 Bootloader: V2.3 - 2026.03.11-19:34+0100 - J. Nilo
 ```
 
 In download mode:
 ```
-Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128
+Realtek RTL8196E  CPU: 400MHz  RAM: 32MB  Flash: GD25Q128 (JEDEC c84018)
 Bootloader: V2.3 - 2026.03.11-19:34+0100 - J. Nilo
 ---Escape booting by user
 ---Ethernet init Okay!
 <RealTek>
 ```
 
-### Build timestamp
+### Version and build timestamp
 
-Generated automatically at compile time via `boot/Makefile`:
-```makefile
-BOOT_CODE_TIME ?= $(shell date "+%Y.%m.%d-%H:%M%z")
-```
-
-### Version
-
-Defined in `boot/include/ver.h`:
+Both live in `boot/include/ver.h` and are bumped together when the
+bootloader is rebuilt for a release.  The timestamp is a pinned constant,
+not a live `date` call, so the build is reproducible (same source, same
+`boot.bin`; `BOOT_CODE_TIME_OVERRIDE=...` on the make line overrides it for
+experiments):
 ```c
-static char B_VERSION[] = "V2.2";
+#define B_VERSION "V3.1"
+#define BOOT_CODE_TIME "2026.09.11-18:00+0200"
 ```
 
 ---
@@ -226,7 +224,7 @@ Two variants are built:
 | Variant | Output file | Description |
 |---------|-------------|-------------|
 | boot | `boot-img/<board>/boot.bin` | Production flash image, per-board slot (stays in download mode after boot TFTP) |
-| ramtest | `btcode/build/test.bin` | RAM-test image with read-back verification |
+| ramtest | `btcode/build-ramtest/test.bin` | RAM-test image (RAMTEST_TRACE), own object directories |
 
 ### Build pipeline
 
@@ -265,7 +263,7 @@ boot-img/<board>/boot.bin   (final flash image, per-board slot)
 | `Makefile` | Top-level build: orchestrates three variants |
 | `boot/Makefile` | Stage-2 build: compiler flags, source list |
 | `btcode/Makefile` | Stage-1 build: LZMA compression, flash header |
-| `boot/include/flash_layout.h` | Flash partition offsets and scan ranges |
+| `boot/include/spi_flash.h` | Flash partition offsets, scan ranges and the flash.c API |
 | `boot/include/ver.h` | Bootloader version string |
 
 ---
@@ -290,8 +288,8 @@ boot-img/<board>/boot.bin   (final flash image, per-board slot)
 |-----------|--------|------|-------------|
 | mtd0 | 0x000000 | 0x020000 (128 KB) | Bootloader + config |
 | mtd1 | 0x020000 | 0x1E0000 (1.9 MB) | Linux kernel |
-| mtd2 | 0x200000 | 0x220000 (2.1 MB) | Root filesystem |
-| mtd3 | 0x420000 | 0xBE0000 (11.9 MB) | User data (JFFS2) |
+| mtd2 | 0x200000 | 0x200000 (2 MB) | Root filesystem |
+| mtd3 | 0x400000 | 0xC00000 (12 MB) | User data (JFFS2) |
 
 ---
 
