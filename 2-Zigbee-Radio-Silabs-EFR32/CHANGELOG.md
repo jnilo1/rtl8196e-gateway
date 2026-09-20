@@ -1186,6 +1186,17 @@ pointing at the working single-protocol paths
 (Zigbee via `docker-compose-zigbee.yml`, Matter-over-Thread via
 `../../26-OT-RCP/docker/docker-compose-otbr-host.yml`).
 
+**Correction (post-v4.5.0):** the failure above was misdiagnosed. The
+`GetIidListFromUrl()` error came from an OpenThread POSIX host build without
+`OT_MULTIPAN_RCP=ON`; it occurred in the host URL parser before any RCP query.
+With that option enabled, two static RCP instances, and the explicit allocation
+broadcast/IID 0, Zigbee/IID 1, Thread/IID 2, the Lidl EFR32MG1B ran both
+protocols concurrently in a short channel-11 test. Series 1 supports this only
+when the Zigbee and Thread networks share a channel. Independent-channel
+operation remains a Series 2 Concurrent Listening requirement. Longer
+mixed-traffic testing and validation with a real Thread device are still
+pending, so the restored multi-PAN path is experimental.
+
 ### Firmware rebuild against v3.0 sources
 
 All five firmwares rebuilt against the current sources (GSDK 4.5.0 +

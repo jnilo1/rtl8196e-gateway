@@ -16,6 +16,8 @@ the [first installation guide](./getting-started.md#sengled-g4-only-install-the-
 
 - Want a reliable Zigbee coordinator for **Zigbee2MQTT or ZHA**? Choose **NCP**.
 - Want to experiment with **EmberZNet 8.2 on the host**? Choose **RCP**.
+- Want to experiment with **same-channel Zigbee + Thread** on a Lidl gateway?
+  Choose the RCP multi-PAN stack.
 - Want a **Thread Border Router**? Choose **OT-RCP**.
 - Want this box to extend an existing Zigbee mesh, without acting as a
   coordinator? Choose **Router**.
@@ -27,7 +29,7 @@ NCP is the recommended default for new users.
 | Mode | Main use | Where the protocol stack runs | Client connection | Knowledge level |
 | --- | --- | --- | --- | --- |
 | **NCP** | Zigbee2MQTT or ZHA coordinator | EFR32, EmberZNet 7.5.1 / EZSP v13 | Directly to gateway TCP:8888 | Beginner |
-| **RCP** | Modern host-side Zigbee stack | `cpcd` + `zigbeed` on a host, EmberZNet 8.2.2 / EZSP v18 | Client connects to `zigbeed`, not directly to the RCP | Advanced |
+| **RCP** | Modern host-side Zigbee; experimental same-channel Zigbee + Thread on Lidl | `cpcd` + host stacks, EmberZNet 8.2.2 / EZSP v18 | Client connects to `zigbeed`, not directly to the RCP | Advanced |
 | **OT-RCP** | Thread/Matter or Zigbee-on-Host | OpenThread or Zigbee stack on gateway/external host | Depends on selected host stack | Intermediate to advanced |
 | **Router** | Extend an existing Zigbee mesh | Entire router application on EFR32 | No coordinator client | Intermediate |
 
@@ -93,6 +95,13 @@ baud is selected automatically.
 
 Continue with the [RCP guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/README.md)
 and the [EmberZNet 8.x guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md).
+
+The Lidl RCP also has an experimental multi-PAN host stack: Zigbee uses IID 1,
+Thread uses IID 2, and IID 0 is broadcast. Both networks must use the same
+802.15.4 channel on the Series 1 EFR32MG1B. Independent-channel Zigbee + Thread
+requires Series 2 Concurrent Listening. Current validation is limited to a
+short same-channel test without a real Thread device; see the
+[multi-PAN guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/README.md).
 
 ## OT-RCP: Thread or Zigbee-on-Host
 

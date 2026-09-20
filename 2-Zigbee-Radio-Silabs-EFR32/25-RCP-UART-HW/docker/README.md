@@ -1,15 +1,16 @@
 # Docker Stacks for RCP Firmware (EmberZNet 8.2.2)
 
-The RCP firmware has one working use case on these gateways.
-A second one (concurrent Zigbee + Thread) was originally sketched but is
-not achievable on a Series 1 radio — see [`cpcd-zigbeed-otbr/README.md`](./cpcd-zigbeed-otbr/README.md).
+The stable path runs Zigbee alone. An experimental second path runs Zigbee and
+Thread concurrently on a Lidl Series 1 radio, provided both networks use the
+same 802.15.4 channel. See
+[`cpcd-zigbeed-otbr/README.md`](./cpcd-zigbeed-otbr/README.md).
 
 ## Use Cases at a Glance
 
 | # | Use case | Compose file | EFR32 firmware | Status |
 |---|----------|-------------|----------------|--------|
 | 1 | **Zigbee** (EmberZNet 8.2.2) | `docker-compose-zigbee.yml` | `./flash_efr32.sh rcp` | Tested, stable |
-| 2 | **Multipan** (Zigbee + Thread) | — | — | ❌ Not achievable on EFR32MG1B ([why](./cpcd-zigbeed-otbr/README.md)) |
+| 2 | **Multi-PAN** (same-channel Zigbee + Thread) | `docker-compose-multipan.yml` | `./flash_efr32.sh rcp` | Experimental on Lidl EFR32MG1B ([limits](./cpcd-zigbeed-otbr/README.md)) |
 
 ```
                           Use case 1: Zigbee
@@ -31,13 +32,14 @@ not achievable on a Series 1 radio — see [`cpcd-zigbeed-otbr/README.md`](./cpc
                         └───────┬──────────────┘
                                 │ UART 460800
                         ┌───────┴──────────────┐
-         EFR32          │  RCP (single-PAN)    │
+         EFR32          │  RCP (IID 1 active)  │
                         └──────────────────────┘
 ```
 
-For Matter-over-Thread on this gateway, reflash the EFR32 with the standalone
-OT-RCP firmware (`./flash_efr32.sh otrcp` from the repo root) and use the Thread
-Border Router compose at `../../26-OT-RCP/docker/docker-compose-otbr-host.yml`.
+For a production single-protocol Matter-over-Thread deployment, reflash the
+EFR32 with the standalone OT-RCP firmware (`./flash_efr32.sh otrcp` from the
+repo root) and use the Thread Border Router compose at
+`../../26-OT-RCP/docker/docker-compose-otbr-host.yml`.
 
 ---
 
@@ -116,12 +118,20 @@ ghcr.io/jnilo1/cpcd-zigbeed:latest
 
 ---
 
-## Use Case 2: Multipan — not supported on this hardware
+## Use Case 2: Experimental same-channel multi-PAN
 
-Historical POC to run Zigbee + Thread concurrently off a single multi-PAN
-RCP. Not achievable on the gateway's EFR32MG1B (Series 1). See
-[`cpcd-zigbeed-otbr/README.md`](./cpcd-zigbeed-otbr/README.md) for the
-full explanation and what to do instead.
+Runs `zigbeed` on IID 1 and OTBR on IID 2 through one `cpcd`, with IID 0
+reserved for broadcast. The OTBR image is built with `OT_MULTIPAN_RCP=ON`;
+without that host option, the OpenThread URL parser rejects the IID list before
+contacting the RCP.
+
+Series 1 supports this arrangement only when Zigbee and Thread share a channel.
+Independent-channel Concurrent Listening remains a Series 2 requirement. The
+test so far was short and used no real Thread device, so this remains
+experimental. Run this compose file with a rootful native Linux Docker engine;
+OTBR needs host networking, `/dev/net/tun`, IPv4/IPv6 forwarding, mDNS, and
+host firewall access. Follow the
+[multi-PAN guide](./cpcd-zigbeed-otbr/README.md) for the Linux host setup.
 
 ---
 
@@ -132,6 +142,11 @@ full explanation and what to do instead.
 docker compose -f docker-compose-zigbee.yml up -d
 docker compose -f docker-compose-zigbee.yml down
 docker compose -f docker-compose-zigbee.yml logs -f cpcd-zigbeed
+
+# Experimental same-channel Zigbee + Thread stack
+docker compose -f docker-compose-multipan.yml build otbr-agent
+docker compose -f docker-compose-multipan.yml up -d
+docker compose -f docker-compose-multipan.yml logs -f cpcd-zigbeed otbr-agent
 
 # Full reset (deletes all Zigbee data, Z2M database)
 docker compose -f docker-compose-zigbee.yml down -v
