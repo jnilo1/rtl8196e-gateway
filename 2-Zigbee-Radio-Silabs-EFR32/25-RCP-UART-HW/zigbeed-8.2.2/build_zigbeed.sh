@@ -1,5 +1,5 @@
 #!/bin/bash
-# build_zigbeed.sh - Build and install zigbeed from Simplicity SDK (EmberZNet 8.2.2)
+# build_zigbeed.sh - Build and install zigbeed from SiSDK 2025.6.3 / EZSP 18
 #
 # Portable script for x86_64, ARM64 (Raspberry Pi 4/5), ARM32.
 # Automatically downloads Simplicity SDK 2025.6.3 if not present.
@@ -21,12 +21,12 @@ prepare_deb_files() {
     # Debian Maintainer Scripts
     cat << 'EOF' > preinst
 #!/bin/sh
-set -e
+set -eu
 echo "Stopping zigbeed if running..."
 pkill -f zigbeed || true
 EOF
 
-    cat << 'EOF' > prerm
+cat << 'EOF' > prerm
 #!/bin/sh
 set -e
 echo "Stopping zigbeed before removal..."
@@ -36,7 +36,7 @@ EOF
     chmod +x preinst prerm
 }
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
@@ -47,6 +47,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 SILABS_TOOLS="${PROJECT_ROOT}/silabs-tools"
 SIMPLICITY_SDK="${SILABS_TOOLS}/simplicity_sdk_2025.6.3"
 ZIGBEED_SAMPLE="${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"
+ADAPTER_INSTALLER="${SCRIPT_DIR}/install_serial_adapter.sh"
 
 REPO_OWNER=$(git remote get-url origin 2>/dev/null | sed -E 's/.*[:\/](.*)\/.*\..*/\1/') || true
 REPO_OWNER="${REPO_OWNER:-unknown}"
@@ -92,7 +93,7 @@ if [ -z "$INSTALL_MODE" ]; then
 fi
 
 echo "========================================="
-echo "  zigbeed builder (EmberZNet 8.2.2)"
+echo "  zigbeed builder (SiSDK 2025.6.3 / EZSP 18)"
 echo "  Architecture: $(uname -m)"
 echo "========================================="
 
@@ -126,6 +127,10 @@ fi
 
 if ! command -v slc >/dev/null 2>&1; then
     echo "ERROR: slc not found in PATH"
+    exit 1
+fi
+if [ ! -x "${ADAPTER_INSTALLER}" ]; then
+    echo "ERROR: project serial adapter installer is missing or not executable: ${ADAPTER_INSTALLER}"
     exit 1
 fi
 
@@ -190,6 +195,8 @@ slc generate zigbeed.slcp \
     -o makefile \
     --force 2>&1 | tail -5
 
+"${ADAPTER_INSTALLER}" "${BUILD_DIR}"
+
 # Replace partial SDK copy with symlink (slc copies some files, but not all headers)
 rm -rf simplicity_sdk_2025.6.3
 ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
@@ -205,6 +212,11 @@ sed -i "/platform\/service\/cpc\/daemon\/lib/a \  -I${CPC_DIR}/lib \\\\" zigbeed
 sed -i "/-lcpc/i \  -L${CPC_DIR}/build \\\\" zigbeed.project.mak
 
 make -f zigbeed.Makefile -j$(nproc)
+
+if ! LC_ALL=C grep -aFq "EZSP transport: TCP listen" build/debug/zigbeed; then
+    echo "ERROR: Zigbeed binary does not contain the project serial adapter marker" >&2
+    exit 1
+fi
 
 # =========================================
 # Strip and install
@@ -250,11 +262,11 @@ esac
 
 echo ""
 echo "========================================="
-echo "  Done! (EmberZNet 8.2.2 / EZSP 18)"
+echo "  Done! (SiSDK 2025.6.3 / EZSP 18)"
 echo "========================================="
 echo ""
 echo "Usage:"
-echo "  zigbeed -p 9999    # Listen on TCP port 9999"
+echo "  zigbeed -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p tcp-listen://127.0.0.1:9999    # Local TCP listener"
 echo ""
 echo "Zigbee2MQTT config:"
 echo "  serial:"

@@ -173,7 +173,7 @@ Check the rcp-stack logs:
 journalctl --user -u zigbeed.service -f
 ```
 
-Then start Zigbee2MQTT. You should see EmberZNet 8.2.2 (EZSP 18):
+Then start Zigbee2MQTT. You should see EmberZNet 8.2.2 [GA], build 532 (EZSP 18):
 ```
 $ pnpm start
 
@@ -198,12 +198,12 @@ Starting Zigbee2MQTT without watchdog.
 [2026-01-22 16:49:47] info:     zh:ember:uart:ash: ======== ASH connected ========
 [2026-01-22 16:49:47] info:     zh:ember:uart:ash: ======== ASH started ========
 [2026-01-22 16:49:47] info:     zh:ember:ezsp: ======== EZSP started ========
-[2026-01-22 16:49:47] info:     zh:ember: Adapter version info: {"ezsp":18,"revision":"8.2.2 [GA]","build":436,"major":8,"minor":2,"patch":2,"special":0,"type":170}
+[2026-01-22 16:49:47] info:     zh:ember: Adapter version info: {"ezsp":18,"revision":"8.2.2 [GA]","build":532,"major":8,"minor":2,"patch":2,"special":0,"type":170}
 [2026-01-22 16:49:47] info:     zh:ember: [STACK STATUS] Network up.
 [2026-01-22 16:49:47] info:     zh:ember: [INIT TC] Adapter network matches config.
 [2026-01-22 16:49:47] info:     zh:ember: [CONCENTRATOR] Started source route discovery.
 [2026-01-22 16:49:47] info:     z2m: zigbee-herdsman started (resumed)
-[2026-01-22 16:49:47] info:     z2m: Coordinator firmware version: '{"meta":{"build":436,"ezsp":18,"major":8,"minor":2,"patch":2,"revision":"8.2.2 [GA]","special":0,"type":170},"type":"EmberZNet"}'
+[2026-01-22 16:49:47] info:     z2m: Coordinator firmware version: '{"meta":{"build":532,"ezsp":18,"major":8,"minor":2,"patch":2,"revision":"8.2.2 [GA]","special":0,"type":170},"type":"EmberZNet"}'
 ```
 
 Key indicators of success:

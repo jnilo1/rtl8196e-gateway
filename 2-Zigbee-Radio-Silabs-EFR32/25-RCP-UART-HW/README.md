@@ -5,7 +5,7 @@ Radio Co-Processor (RCP) firmware for the EFR32 radio: EFR32MG1B232F256GM48 on t
 This firmware transforms the gateway's Zigbee chip into a **Radio Co-Processor**
 that handles only the 802.15.4 PHY/MAC layer. The Zigbee stack runs host-side
 in `zigbeed`, which lets us pair a Series 1 EFR32MG1B radio with a modern
-**EmberZNet 8.2.2** stack — the gateway then exposes **EZSP v18** to Z2M / ZHA,
+**EmberZNet 8.2.2 [GA], build 532** stack — the gateway then exposes **EZSP v18** to Z2M / ZHA,
 even though Silabs froze on-chip Series 1 support at EmberZNet 7.5.1.
 
 > **Multi-board:** this firmware also builds for other RTL8196E hubs via `BOARD=`
@@ -24,7 +24,7 @@ even though Silabs froze on-chip Series 1 support at EmberZNet 7.5.1.
 
 | Host stack | Exposes | When to use |
 |------------|---------|-------------|
-| `cpcd` + `zigbeed` **8.2.2** (recommended) | EZSP v18 | Default — modern stack, latest Z2M/ZHA features |
+| `cpcd` + `zigbeed` **EmberZNet 8.2.2 [GA], build 532** (recommended) | EZSP v18 | Default — modern stack, latest Z2M/ZHA features |
 | `cpcd` + `zigbeed` **7.5.1** (legacy) | EZSP v13 | Only if you need bit-for-bit parity with the NCP-UART-HW path |
 
 > **Experimental multi-PAN:** the Lidl EFR32MG1B can serve Zigbee on IID 1 and
@@ -216,7 +216,7 @@ After flashing the RCP firmware, you need to configure the host software chain.
 | Component | Version | Source | Description |
 |-----------|---------|--------|-------------|
 | cpcd | v4.5.3 | [SiliconLabs/cpc-daemon](https://github.com/SiliconLabs/cpc-daemon) | CPC daemon |
-| zigbeed | EmberZNet 8.2.2 | Simplicity SDK 2025.6.3 | Zigbee stack daemon (recommended) |
+| zigbeed | EmberZNet 8.2.2 [GA], build 532 | Simplicity SDK 2025.6.3 | Zigbee stack daemon (recommended) |
 | zigbeed | EmberZNet 7.5.1 | Gecko SDK 4.5.0 | Zigbee stack daemon (legacy) |
 
 > **CPC transport — native TCP bus.** `cpcd` here is built with a native
@@ -251,6 +251,10 @@ cd docker/
 # Edit docker-compose-zigbee.yml: set RCP_HOST to your gateway's IP
 docker compose -f docker-compose-zigbee.yml up -d
 ```
+
+The Docker default is `ZIGBEED_TRANSPORT=tcp`: Zigbeed exposes native TCP
+`tcp-listen://0.0.0.0:9999` directly to Zigbee2MQTT. Set
+`ZIGBEED_TRANSPORT=pty` only for the retained PTY+socat compatibility path.
 
 See `docker/README.md` for detailed instructions.
 

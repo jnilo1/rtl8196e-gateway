@@ -1,4 +1,4 @@
-# Docker Stacks for RCP Firmware (EmberZNet 8.2.2)
+# Docker Stacks for RCP Firmware (SiSDK 2025.6.3 / EZSP 18)
 
 The stable path runs Zigbee alone. An experimental second path runs Zigbee and
 Thread concurrently on a Lidl Series 1 radio, provided both networks use the
@@ -9,7 +9,7 @@ same 802.15.4 channel. See
 
 | # | Use case | Compose file | EFR32 firmware | Status |
 |---|----------|-------------|----------------|--------|
-| 1 | **Zigbee** (EmberZNet 8.2.2) | `docker-compose-zigbee.yml` | `./flash_efr32.sh rcp` | Tested, stable |
+| 1 | **Zigbee** (EmberZNet 8.2.2 [GA], build 532) | `docker-compose-zigbee.yml` | `./flash_efr32.sh rcp` | Tested, stable |
 | 2 | **Multi-PAN** (same-channel Zigbee + Thread) | `docker-compose-multipan.yml` | `./flash_efr32.sh rcp` | Experimental on Lidl EFR32MG1B ([limits](./cpcd-zigbeed-otbr/README.md)) |
 
 ```
@@ -59,13 +59,34 @@ repo root) and use the Thread Border Router compose at
 
 ---
 
-## Use Case 1: Zigbee — EmberZNet 8.2.2
+## Use Case 1: Zigbee — EmberZNet 8.2.2 [GA], build 532
 
-Runs Zigbee2MQTT with the `ember` adapter. The Zigbee stack (zigbeed,
-EmberZNet 8.2.2 / EZSP v18) runs in a Docker container that connects to
-the gateway's in-kernel UART bridge over TCP. Inside the container, `cpcd`
-uses its native `bus_type: TCP` to dial the bridge on `TCP:8888` directly —
-no `socat` PTY shim (see [`cpcd/README.md`](../cpcd/README.md)).
+Runs Zigbee2MQTT with the `ember` adapter. The Zigbee stack (SiSDK 2025.6.3 /
+EZSP v18; runtime EmberZNet 8.2.2 [GA], build 532) uses the normal native path:
+
+```text
+EFR32 RCP -> TCP :8888 -> cpcd -> CPC socket -> zigbeed -> native TCP :9999 -> Zigbee2MQTT
+```
+
+`cpcd` uses its native `bus_type: TCP` to dial the gateway bridge directly, and
+Zigbeed owns the single-client EZSP listener on `:9999`; no socat process or
+PTY is started in this default mode.
+
+### Zigbeed transport modes
+
+`ZIGBEED_TRANSPORT=tcp` is the default and starts Zigbeed with
+`-p tcp-listen://0.0.0.0:9999`. Zigbee2MQTT continues to use:
+
+```yaml
+serial:
+  port: tcp://cpcd-zigbeed:9999
+  adapter: ember
+```
+
+`ZIGBEED_TRANSPORT=pty` is the permanent compatibility option. It starts the
+PTY pair and `socat-zigbeed`, while retaining the same Zigbee2MQTT TCP endpoint.
+The health check never connects to `:9999`; it inspects the CPCd/Zigbeed
+processes and listener state instead.
 
 ### Quick Start
 
@@ -105,8 +126,8 @@ ghcr.io/jnilo1/cpcd-zigbeed:latest
 
 | Tag | cpcd | EmberZNet | EZSP |
 |-----|------|-----------|------|
-| `latest` | 4.5.3 | 8.2.2 | v18 |
-| `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 | v18 |
+| `latest` | 4.5.3 | 8.2.2 [GA], build 532 | v18 |
+| `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 [GA], build 532 | v18 |
 
 ### Services
 
