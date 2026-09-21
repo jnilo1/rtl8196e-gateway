@@ -1,0 +1,105 @@
+# Experimental same-channel Zigbee + Thread stack for the Lidl EFR32MG1B.
+# Set RCP_HOST below, then keep both networks on the same 802.15.4 channel.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 1883"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  cpcd-zigbeed:
+    image: ghcr.io/jnilo1/cpcd-zigbeed:${CPCD_ZIGBEED_TAG:-cpcd4.5.3-ezsp18}
+    environment:
+      RCP_HOST: ${RCP_HOST:-192.168.1.88}
+      RCP_PORT: "8888"
+      CPCD_INSTANCE: cpcd_0
+      # Explicit multi-PAN allocation: Zigbee IID 1, broadcast IID 0.
+      ZIGBEED_IID: "1"
+      CPC_BROADCAST_IID: "0"
+      ZIGBEED_PORT: "9999"
+      ZIGBEED_DEBUG: "0"
+    volumes:
+      - zigbeed_data:/var/lib/zigbeed
+      # cpcd owns the daemon and publishes its Unix sockets here. zigbeed in
+      # this image uses IID 1; the OTBR container below consumes IID 2.
+      - cpc_socket:/dev/shm/cpcd
+    shm_size: 64mb
+    cap_add:
+      - SYS_PTRACE
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "p=$$(printf '%04X' \"$$ZIGBEED_PORT\"); grep -qiE \":$$p [0-9A-F:]+ 0A \" /proc/net/tcp /proc/net/tcp6 2>/dev/null"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  otbr-agent:
+    image: ghcr.io/jnilo1/multipan-otbr:${MULTIPAN_OTBR_TAG:-4.5.1}
+    pull_policy: missing
+    build:
+      context: .
+      dockerfile: cpcd-zigbeed-otbr/Dockerfile.multiarch
+    depends_on:
+      cpcd-zigbeed:
+        condition: service_healthy
+    # Host networking is required for IPv6 router advertisements and mDNS on
+    # the physical infrastructure link. Set this to that link's interface.
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    command:
+      - -I
+      - wpan0
+      - -B
+      - ${OTBR_INFRA_INTERFACE:-eth0}
+      - -s
+      - --auto-attach=0
+      # Explicit multi-PAN allocation: Thread IID 2, broadcast IID 0.
+      - spinel+cpc://cpcd_0?iid=2&iid-list=0&cpc-bus-speed=460800
+    volumes:
+      - cpc_socket:/dev/shm/cpcd
+      - otbr_data:/var/lib/thread
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+
+  zigbee2mqtt:
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.1
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - z2m_data:/app/data
+      - ./z2m/configuration.yaml:/app/data/configuration.yaml
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      cpcd-zigbeed:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  zigbeed_data:
+  z2m_data:
+  otbr_data:
+  # Runtime CPC sockets only; no persistent protocol state is stored here.
+  cpc_socket:

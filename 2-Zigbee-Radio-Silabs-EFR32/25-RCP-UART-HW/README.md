@@ -27,13 +27,13 @@ even though Silabs froze on-chip Series 1 support at EmberZNet 7.5.1.
 | `cpcd` + `zigbeed` **8.2.2** (recommended) | EZSP v18 | Default — modern stack, latest Z2M/ZHA features |
 | `cpcd` + `zigbeed` **7.5.1** (legacy) | EZSP v13 | Only if you need bit-for-bit parity with the NCP-UART-HW path |
 
-> **Single-stack only.** This RCP firmware does **not** support running Zigbee
-> and Thread concurrently on this gateway — the EFR32MG1B is Silabs Series 1
-> and supports only Dynamic Multiprotocol (BLE + one 15.4 stack), not the
-> Concurrent Multiprotocol needed for Zigbee+Thread. See
+> **Experimental multi-PAN:** the Lidl EFR32MG1B can serve Zigbee on IID 1 and
+> Thread on IID 2 concurrently **on the same 802.15.4 channel**. The Series 1
+> radio cannot operate those networks on independent channels; that requires
+> Series 2 Concurrent Listening. The current validation is a short same-channel
+> test only, without a real Thread end device or long mixed-traffic soak. See
 > [`docker/cpcd-zigbeed-otbr/README.md`](./docker/cpcd-zigbeed-otbr/README.md)
-> for the full post-mortem. For Thread / Matter, reflash with the OT-RCP
-> firmware in [`26-OT-RCP/`](../26-OT-RCP/README.md).
+> for the reproducible host build, explicit IID allocation, and caveats.
 
 ## About RCP Architecture
 

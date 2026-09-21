@@ -1,0 +1,123 @@
+name: Build experimental multi-PAN OTBR image
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/docker-multipan-otbr.yml'
+      - '2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/**'
+      - '2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed/Dockerfile.multiarch'
+      - '2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed/supervisord.conf'
+      - '2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/docker-compose-multipan.yml'
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      push_image:
+        description: 'Push image to registry'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/multipan-otbr
+
+jobs:
+  compose:
+    name: Validate Compose
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Compose configuration
+        working-directory: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker
+        run: docker compose -f docker-compose-multipan.yml config --quiet
+
+  build:
+    name: Validate ${{ matrix.platform }}
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.push_image)
+    runs-on: ubuntu-latest
+    needs: compose
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            cache: amd64
+          - platform: linux/arm64
+            cache: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image without publishing
+        uses: docker/build-push-action@v5
+        with:
+          context: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker
+          file: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/Dockerfile.multiarch
+          platforms: ${{ matrix.platform }}
+          push: false
+          cache-from: type=gha,scope=multipan-otbr-${{ matrix.cache }}
+          cache-to: type=gha,mode=max,scope=multipan-otbr-${{ matrix.cache }}
+
+  publish:
+    name: Publish linux/amd64 + linux/arm64
+    if: github.repository == 'jnilo1/rtl8196e-gateway' && (github.event_name == 'push' || inputs.push_image)
+    runs-on: ubuntu-latest
+    needs: compose
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-rc') }}
+            type=sha,prefix=
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker
+          file: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/Dockerfile.multiarch
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha,scope=multipan-otbr-amd64
+            type=gha,scope=multipan-otbr-arm64
+          cache-to: type=gha,mode=max,scope=multipan-otbr-multiarch

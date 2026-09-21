@@ -62,6 +62,12 @@ configuration:
     value: 1
   - name: OPENTHREAD_CONFIG_MULTIPLE_STATIC_INSTANCE_ENABLE
     value: 1
+  # IID 0 is the CPC broadcast endpoint; allocate two data instances so the
+  # generated RCP maps Zigbee to IID 1 and Thread to IID 2.
+  - name: OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_NUM
+    value: 2
+  - name: OPENTHREAD_SPINEL_CONFIG_BROADCAST_IID
+    value: 0
 
   # Disable features not needed
   - name: OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE

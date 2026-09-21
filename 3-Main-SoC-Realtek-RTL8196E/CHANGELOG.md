@@ -6,6 +6,14 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.5.1] - 2026-09-21
+
+_No RTL8196E platform artifact changes. This radio/container-only release keeps
+the v4.5.0 bootloader, Linux 6.18 and 7.2 kernels, rootfs, userdata, installed
+version and login banner unchanged._
+
+---
+
 ## [4.5.0] - 2026-09-14
 
 ### Docs — Ethernet driver performance file reduced to two release tables

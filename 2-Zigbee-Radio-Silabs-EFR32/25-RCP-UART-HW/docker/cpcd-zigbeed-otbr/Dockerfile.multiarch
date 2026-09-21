@@ -1,0 +1,128 @@
+# Experimental OTBR host for the GSDK 4.5 multi-PAN RCP.
+#
+# This deliberately builds OpenThread and OTBR from the versions vendored by
+# GSDK 4.5.0. The Silicon Labs CPC spinel transport and platform config must
+# match that OpenThread tree; using a stock OTBR image omits both the vendor
+# transport and OT_MULTIPAN_RCP URL handling.
+
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG GSDK_VERSION=v4.5.0
+ARG CPCD_VERSION=v4.5.3
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        iproute2 \
+        ipset \
+        iptables \
+        libmbedtls-dev \
+        lsb-release \
+        ninja-build \
+        pkg-config \
+        python3 \
+        sudo \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fetch only the three GSDK areas used by this build. Keeping the SDK tag and
+# cpc-daemon tag explicit makes the host/RCP compatibility boundary visible.
+RUN git clone --depth 1 --filter=blob:none --sparse --branch "${GSDK_VERSION}" \
+        https://github.com/SiliconLabs/gecko_sdk.git /sdk \
+    && git -C /sdk sparse-checkout set \
+        util/third_party/openthread \
+        util/third_party/ot-br-posix \
+        protocol/openthread/platform-abstraction/posix \
+    && git clone --depth 1 --branch "${CPCD_VERSION}" \
+        https://github.com/SiliconLabs/cpc-daemon.git /work/cpc-daemon
+
+# OTBR's OpenThread subdirectory must be the GSDK-matched source tree, not the
+# upstream submodule normally selected by ot-br-posix.
+RUN cp -a /sdk/util/third_party/openthread /work/openthread \
+    && cp /sdk/protocol/openthread/platform-abstraction/posix/openthread-core-silabs-posix-config.h \
+        /work/openthread/src/posix/platform/ \
+    && cp -a /sdk/util/third_party/ot-br-posix /work/ot-br-posix \
+    && mkdir -p /work/ot-br-posix/third_party/openthread \
+    && rm -rf /work/ot-br-posix/third_party/openthread/repo \
+    && ln -s /work/openthread /work/ot-br-posix/third_party/openthread/repo
+
+WORKDIR /work/ot-br-posix
+
+# bootstrap installs mDNSResponder and the remaining OTBR build/runtime
+# dependencies. setup builds and installs otbr-agent, ot-ctl, the REST API,
+# firewall service, D-Bus integration, and the selected OpenThread tree.
+RUN DOCKER=1 RELEASE=1 REFERENCE_DEVICE=1 BACKBONE_ROUTER=1 \
+        BORDER_ROUTING=1 NAT64=1 DNS64=1 ./script/bootstrap
+
+RUN SDK_DIR=/sdk \
+    CPCD_DIR=/work/cpc-daemon \
+    DOCKER=1 \
+    INFRA_IF_NAME=eth0 \
+    RELEASE=1 \
+    REFERENCE_DEVICE=1 \
+    BACKBONE_ROUTER=1 \
+    BORDER_ROUTING=1 \
+    NAT64=1 \
+    DNS64=1 \
+    OTBR_OPTIONS="\
+      -DBUILD_SHARED_LIBS=OFF \
+      -DOT_THREAD_VERSION=1.4 \
+      -DOT_MULTIPAN_RCP=ON \
+      -DCPCD_SOURCE_DIR=/work/cpc-daemon \
+      -DOT_POSIX_RCP_HDLC_BUS=ON \
+      -DOT_POSIX_RCP_SPI_BUS=ON \
+      -DOT_POSIX_RCP_VENDOR_BUS=ON \
+      -DOT_POSIX_CONFIG_RCP_VENDOR_DEPS_PACKAGE=/sdk/protocol/openthread/platform-abstraction/posix/posix_vendor_rcp.cmake \
+      -DOT_POSIX_CONFIG_RCP_VENDOR_INTERFACE=/sdk/protocol/openthread/platform-abstraction/posix/cpc_interface.cpp \
+      -DOT_PLATFORM_CONFIG=openthread-core-silabs-posix-config.h \
+      -DOTBR_DUA_ROUTING=ON \
+      -DOTBR_DNSSD_DISCOVERY_PROXY=ON \
+      -DOTBR_SRP_ADVERTISING_PROXY=ON" \
+      ./script/setup
+
+# Fail the image build if the option that enables iid/iid-list URL handling
+# was lost while changing the OTBR build plumbing.
+RUN grep -q '^OT_MULTIPAN_RCP:STRING=ON$' \
+        /work/ot-br-posix/build/otbr/CMakeCache.txt
+
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        dbus \
+        iproute2 \
+        ipset \
+        iptables \
+        libnetfilter-queue1 \
+        libprotobuf-lite32t64 \
+        libreadline8t64 \
+        lsb-base \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/sbin/otbr-agent /usr/sbin/otbr-agent
+COPY --from=builder /usr/sbin/ot-ctl /usr/sbin/ot-ctl
+COPY --from=builder /usr/sbin/mdnsd /usr/sbin/mdnsd
+COPY --from=builder /lib/libdns_sd.so.1 /usr/lib/libdns_sd.so.1
+COPY --from=builder /etc/dbus-1/system.d/otbr-agent.conf /etc/dbus-1/system.d/otbr-agent.conf
+COPY --from=builder /etc/init.d/otbr-firewall /etc/init.d/otbr-firewall
+
+RUN ln -s libdns_sd.so.1 /usr/lib/libdns_sd.so \
+    && ldconfig \
+    && mkdir -p /run/dbus /var/lib/thread
+
+COPY cpcd-zigbeed-otbr/entrypoint.sh /usr/local/sbin/otbr-container-entrypoint
+RUN chmod 0755 /usr/local/sbin/otbr-container-entrypoint
+
+EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD /usr/sbin/ot-ctl state >/dev/null 2>&1 && test -S /run/dbus/system_bus_socket
+
+ENTRYPOINT ["/usr/local/sbin/otbr-container-entrypoint"]
