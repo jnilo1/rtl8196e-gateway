@@ -69,6 +69,24 @@ slc generate zigbeed.slcp \
 
 The `--with` parameter tells slc to include architecture-specific libraries automatically.
 
+## Adapter provenance
+
+The PTY and native TCP transport implementation in `serial_adapter_posix.c`
+belongs to this project. Its OpenThread mainloop integration is adapted from
+OpenThread's BSD-3-Clause licensed
+[`src/posix/main.c`](https://github.com/openthread/openthread/blob/e04ff192755a22b36825e3411c6a4d02e26a2860/src/posix/main.c);
+the applicable OpenThread copyright and license notice is retained in the
+source file.
+
+`THIRD_PARTY_NOTICES` carries the same notice with binary distributions. It is
+installed under `/usr/share/doc/zigbeed/` in the Debian package and container
+image (and under `/usr/local/share/doc/zigbeed/` for local installations).
+
+The Zigbeed serial adapter ABI comes from Simplicity SDK headers available at
+build time. `install_serial_adapter.sh` substitutes the project adapter into
+the generated build tree and removes the SDK source path from the generated
+makefile. Silicon Labs' `serial_adapter.c` is not shipped in this repository.
+
 ## Usage
 
 ```bash

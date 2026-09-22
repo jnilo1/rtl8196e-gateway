@@ -1,15 +1,51 @@
 /*
  * POSIX transport adapter for the generated Zigbeed application.
  *
- * Supports the original PTY/serial endpoint and a single-client TCP listener.
- * It implements the EmberZNet 8.2.x serial adapter contract without using or
- * redistributing the Silicon Labs serial_adapter.c implementation.
+ * Provides PTY and native TCP transport handling implemented by this project.
+ *
+ * OpenThread mainloop integration is based on the BSD-3-Clause licensed
+ * OpenThread POSIX mainloop design. See the OpenThread project for the
+ * applicable source and license information.
+ *
+ * Silicon Labs' serial_adapter.c implementation is not distributed by this
+ * project. The Zigbeed serial adapter ABI is supplied by Simplicity SDK
+ * headers at build time.
+ */
+
+/*
+ * The mainloop initialization and update/poll/process sequence is adapted from
+ * OpenThread src/posix/main.c.
+ *
+ * Copyright (c) 2018, The OpenThread Authors.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -53,12 +89,6 @@ static size_t outLength;
 static uint8_t inBuffer[IO_BUFFER_SIZE];
 static size_t inOffset;
 static size_t inLength;
-
-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
-#include "sl_cli_threaded_host.h"
-extern bool sli_cli_is_input_handled(void);
-extern int sli_cli_get_pipe_read_fd(void);
-#endif
 
 static void close_fd(int *fd)
 {
@@ -474,6 +504,35 @@ static void monitor_fd(int fd, otSysMainloopContext *mainloop, bool wantWrite)
   }
 }
 
+static uint32_t calculate_zigbee_timeout_ms(void)
+{
+  uint32_t stackMs = sl_zigbee_ms_to_next_stack_event();
+  uint32_t appMs = sli_zigbee_af_ms_to_next_event();
+
+  return stackMs < appMs ? stackMs : appMs;
+}
+
+static void initialize_mainloop(otSysMainloopContext *mainloop,
+                                uint32_t timeoutMs)
+{
+  FD_ZERO(&mainloop->mReadFdSet);
+  FD_ZERO(&mainloop->mWriteFdSet);
+  FD_ZERO(&mainloop->mErrorFdSet);
+  mainloop->mMaxFd = INVALID_FD;
+  mainloop->mTimeout.tv_sec = timeoutMs / 1000U;
+  mainloop->mTimeout.tv_usec = (timeoutMs % 1000U) * 1000U;
+}
+
+static void add_transport_fds(otSysMainloopContext *mainloop)
+{
+  if (transportKind == TRANSPORT_TCP) {
+    monitor_fd(listenFd, mainloop, false);
+    monitor_fd(clientFd, mainloop, outLength != 0U);
+  } else {
+    monitor_fd(serialFd, mainloop, outLength != 0U);
+  }
+}
+
 static void probe_client_disconnect(const otSysMainloopContext *mainloop)
 {
   uint8_t byte;
@@ -490,34 +549,28 @@ static void probe_client_disconnect(const otSysMainloopContext *mainloop)
   }
 }
 
+static void process_transport_fds(const otSysMainloopContext *mainloop)
+{
+  if (transportKind == TRANSPORT_TCP) {
+    if (listenFd >= 0 && (FD_ISSET(listenFd, &mainloop->mReadFdSet)
+        || FD_ISSET(listenFd, &mainloop->mErrorFdSet))) {
+      accept_pending_clients();
+    }
+    probe_client_disconnect(mainloop);
+    if (clientFd >= 0 && FD_ISSET(clientFd, &mainloop->mWriteFdSet)) {
+      write_flush();
+    }
+  } else if (serialFd >= 0 && FD_ISSET(serialFd, &mainloop->mWriteFdSet)) {
+    write_flush();
+  }
+}
+
 void sli_serial_adapter_tick_callback(void)
 {
   otSysMainloopContext mainloop;
-  uint32_t timeoutMs = sl_zigbee_ms_to_next_stack_event();
-  uint32_t appMs = sli_zigbee_af_ms_to_next_event();
 
-  timeoutMs = timeoutMs < appMs ? timeoutMs : appMs;
-  FD_ZERO(&mainloop.mReadFdSet);
-  FD_ZERO(&mainloop.mWriteFdSet);
-  FD_ZERO(&mainloop.mErrorFdSet);
-  mainloop.mMaxFd = INVALID_FD;
-
-  if (transportKind == TRANSPORT_TCP) {
-    monitor_fd(listenFd, &mainloop, false);
-    monitor_fd(clientFd, &mainloop, outLength != 0U);
-  } else {
-    monitor_fd(serialFd, &mainloop, outLength != 0U);
-  }
-
-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
-  {
-    int pipeReadFd = sli_cli_get_pipe_read_fd();
-    monitor_fd(pipeReadFd, &mainloop, false);
-  }
-#endif
-
-  mainloop.mTimeout.tv_sec = timeoutMs / 1000U;
-  mainloop.mTimeout.tv_usec = (timeoutMs % 1000U) * 1000U;
+  initialize_mainloop(&mainloop, calculate_zigbee_timeout_ms());
+  add_transport_fds(&mainloop);
   otSysMainloopUpdate(NULL, &mainloop);
 
   if (otSysMainloopPoll(&mainloop) < 0) {
@@ -527,24 +580,6 @@ void sli_serial_adapter_tick_callback(void)
     return;
   }
 
-  if (transportKind == TRANSPORT_TCP) {
-    if (listenFd >= 0 && (FD_ISSET(listenFd, &mainloop.mReadFdSet)
-        || FD_ISSET(listenFd, &mainloop.mErrorFdSet))) {
-      accept_pending_clients();
-    }
-    probe_client_disconnect(&mainloop);
-    if (clientFd >= 0 && FD_ISSET(clientFd, &mainloop.mWriteFdSet)) {
-      write_flush();
-    }
-  } else if (serialFd >= 0 && FD_ISSET(serialFd, &mainloop.mWriteFdSet)) {
-    write_flush();
-  }
-
+  process_transport_fds(&mainloop);
   otSysMainloopProcess(NULL, &mainloop);
-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
-  if (sli_cli_is_input_handled()) {
-    char buffer[SL_CLI_THREADED_HOST_PIPE_DATA_LENGTH];
-    assert(read(sli_cli_get_pipe_read_fd(), buffer, sizeof(buffer)) == (ssize_t)sizeof(buffer));
-  }
-#endif
 }

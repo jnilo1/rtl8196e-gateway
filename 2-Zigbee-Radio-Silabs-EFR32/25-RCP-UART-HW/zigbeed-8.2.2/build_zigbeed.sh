@@ -48,6 +48,7 @@ SILABS_TOOLS="${PROJECT_ROOT}/silabs-tools"
 SIMPLICITY_SDK="${SILABS_TOOLS}/simplicity_sdk_2025.6.3"
 ZIGBEED_SAMPLE="${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"
 ADAPTER_INSTALLER="${SCRIPT_DIR}/install_serial_adapter.sh"
+THIRD_PARTY_NOTICES="${SCRIPT_DIR}/THIRD_PARTY_NOTICES"
 
 REPO_OWNER=$(git remote get-url origin 2>/dev/null | sed -E 's/.*[:\/](.*)\/.*\..*/\1/') || true
 REPO_OWNER="${REPO_OWNER:-unknown}"
@@ -131,6 +132,10 @@ if ! command -v slc >/dev/null 2>&1; then
 fi
 if [ ! -x "${ADAPTER_INSTALLER}" ]; then
     echo "ERROR: project serial adapter installer is missing or not executable: ${ADAPTER_INSTALLER}"
+    exit 1
+fi
+if [ ! -f "${THIRD_PARTY_NOTICES}" ]; then
+    echo "ERROR: third-party notices are missing: ${THIRD_PARTY_NOTICES}"
     exit 1
 fi
 
@@ -231,6 +236,8 @@ case "$INSTALL_MODE" in
     local)
         echo "Installing to /usr/local/bin..."
         sudo install -m 0755 build/debug/zigbeed /usr/local/bin/
+        sudo install -D -m 0644 "${THIRD_PARTY_NOTICES}" \
+            /usr/local/share/doc/zigbeed/THIRD_PARTY_NOTICES
         echo "Done."
         ;;
     deb)
@@ -239,7 +246,9 @@ case "$INSTALL_MODE" in
         VERSION="1.0.0"
         DEPLOY_DIR="${BUILD_DIR}/tmp"
 
-        install -D build/debug/zigbeed ${DEPLOY_DIR}/usr/bin/zigbeed
+        install -D build/debug/zigbeed "${DEPLOY_DIR}/usr/bin/zigbeed"
+        install -D -m 0644 "${THIRD_PARTY_NOTICES}" \
+            "${DEPLOY_DIR}/usr/share/doc/zigbeed/THIRD_PARTY_NOTICES"
 
         prepare_deb_files
         cpack -G DEB \

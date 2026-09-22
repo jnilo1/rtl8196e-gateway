@@ -169,7 +169,11 @@ COPY --from=builder /install/usr/local /usr/local
 RUN ldconfig
 
 # Create directories
-RUN mkdir -p /etc/cpcd /var/lib/zigbeed /run/cpcd /var/log/supervisor
+RUN mkdir -p /etc/cpcd /var/lib/zigbeed /run/cpcd /var/log/supervisor \
+    /usr/share/doc/zigbeed
+
+# License notice for the OpenThread-derived mainloop integration.
+COPY zigbeed-8.2.2/THIRD_PARTY_NOTICES /usr/share/doc/zigbeed/THIRD_PARTY_NOTICES
 
 # Copy configuration files
 COPY docker/cpcd-zigbeed/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

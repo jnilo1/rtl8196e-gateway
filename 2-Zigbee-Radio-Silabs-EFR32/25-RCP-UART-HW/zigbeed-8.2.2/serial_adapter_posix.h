@@ -1,13 +1,13 @@
 /*
- * Project-owned Zigbeed serial adapter contract for EmberZNet 8.2.x.
+ * Project POSIX transport adapter declarations for Zigbeed.
  *
- * This header intentionally describes only the API consumed by the generated
- * Zigbeed application.  It is not derived from Silicon Labs source.
+ * The Zigbeed serial adapter ABI is provided by the Simplicity SDK
+ * serial_adapter.h header at build time. This project header adds no
+ * replacement copy of that ABI.
  */
 #ifndef JNILO1_SERIAL_ADAPTER_POSIX_H
 #define JNILO1_SERIAL_ADAPTER_POSIX_H
 
-/* The SLC-generated header is the authoritative public Zigbeed ABI. */
 #include "serial_adapter.h"
 
 #endif
