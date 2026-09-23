@@ -47,7 +47,7 @@ services:
       retries: 3
 
   otbr-agent:
-    image: ghcr.io/jnilo1/multipan-otbr:${MULTIPAN_OTBR_TAG:-4.5.1}
+    image: ghcr.io/jnilo1/multipan-otbr:${MULTIPAN_OTBR_TAG:-4.5.2}
     pull_policy: missing
     build:
       context: .

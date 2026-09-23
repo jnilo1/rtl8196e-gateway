@@ -79,13 +79,13 @@ show that the radio lacks IID 2.
    ```
 
    The Compose default pins the published multi-architecture image to release
-   `4.5.1`. To reproduce it locally from the shipped sources instead:
+   `4.5.2`. To reproduce it locally from the shipped sources instead:
 
    ```bash
    docker compose -f docker-compose-multipan.yml build otbr-agent
    ```
 
-The `ghcr.io/jnilo1/multipan-otbr:4.5.1` image builds the OpenThread and OTBR
+The `ghcr.io/jnilo1/multipan-otbr:4.5.2` image builds the OpenThread and OTBR
 sources vendored by GSDK 4.5.0, adds the Silicon Labs CPC vendor transport, and
 passes `OT_MULTIPAN_RCP=ON`.
 The containers share only cpcd's Unix-socket directory. `cpcd` itself runs
