@@ -457,8 +457,13 @@ sl_status_t sli_legacy_serial_write_byte(uint8_t port, uint8_t dataByte)
   if (outLength == sizeof(outBuffer)) {
     return SL_STATUS_FAIL;
   }
+  /*
+   * Only queue the byte. ASH emits a whole frame byte by byte in one pass and
+   * never signals its end, so flushing here meant one send() -- one TCP
+   * segment, with TCP_NODELAY -- per byte. The mainloop tick flushes the
+   * queue in a single write before it polls.
+   */
   outBuffer[outLength++] = dataByte;
-  write_flush();
   return SL_STATUS_OK;
 }
 
@@ -569,6 +574,8 @@ void sli_serial_adapter_tick_callback(void)
 {
   otSysMainloopContext mainloop;
 
+  /* Send what the stack queued since the previous tick in one write. */
+  write_flush();
   initialize_mainloop(&mainloop, calculate_zigbee_timeout_ms());
   add_transport_fds(&mainloop);
   otSysMainloopUpdate(NULL, &mainloop);

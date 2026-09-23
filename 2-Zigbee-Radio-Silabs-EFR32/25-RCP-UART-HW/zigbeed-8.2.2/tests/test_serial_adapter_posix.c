@@ -83,6 +83,7 @@ static void test_pty(void)
   snprintf(serialPort, SERIAL_PORT_NAME_MAX_LEN, "%s", path);
   assert(sli_legacy_serial_init(1, 0, 0, 1) == SL_STATUS_OK);
   assert(sli_legacy_serial_write_byte(1, 0x41) == SL_STATUS_OK);
+  sli_serial_adapter_tick_callback();
   assert(read(master, &byte, 1) == 1 && byte == 0x41);
   assert(write(master, "B", 1) == 1);
   assert(read_adapter_byte() == 0x42);
@@ -102,6 +103,7 @@ static void test_tcp_lifecycle(void)
   first = connect_loopback(port);
   sli_serial_adapter_tick_callback();
   assert(sli_legacy_serial_write_byte(1, 0x31) == SL_STATUS_OK);
+  sli_serial_adapter_tick_callback();
   assert(read(first, &byte, 1) == 1 && byte == 0x31);
 
   /* Zigbeed reinitializes this interface while processing an ASH reset. */
@@ -109,7 +111,20 @@ static void test_tcp_lifecycle(void)
   assert(write(first, "R", 1) == 1);
   assert(read_adapter_byte() == 0x52);
   assert(sli_legacy_serial_write_byte(1, 0x33) == SL_STATUS_OK);
+  sli_serial_adapter_tick_callback();
   assert(read(first, &byte, 1) == 1 && byte == 0x33);
+
+  /* A frame written byte by byte leaves in one write at the next tick. */
+  {
+    char frame[3];
+    assert(sli_legacy_serial_write_byte(1, 0x61) == SL_STATUS_OK);
+    assert(sli_legacy_serial_write_byte(1, 0x62) == SL_STATUS_OK);
+    assert(sli_legacy_serial_write_byte(1, 0x63) == SL_STATUS_OK);
+    assert(recv(first, frame, sizeof(frame), MSG_DONTWAIT) < 0);
+    sli_serial_adapter_tick_callback();
+    assert(recv(first, frame, sizeof(frame), 0) == 3);
+    assert(memcmp(frame, "abc", 3) == 0);
+  }
 
   second = connect_loopback(port);
   sli_serial_adapter_tick_callback();
@@ -134,6 +149,7 @@ static void test_tcp_lifecycle(void)
   assert(write(replacement, "B", 1) == 1);
   assert(read_adapter_byte() == 0x42);
   assert(sli_legacy_serial_write_byte(1, 0x32) == SL_STATUS_OK);
+  sli_serial_adapter_tick_callback();
   assert(read(replacement, &byte, 1) == 1 && byte == 0x32);
   close(replacement);
 }
