@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Wait until zigbeed listens on the EZSP TCP port.
+#
+# The listener serves a single client, so this never connects to it: a probe
+# connection would be rejected or, worse, taken for the Zigbee2MQTT session.
+# It reads the kernel's socket table instead.
+
+listen="${1:-${ZIGBEED_LISTEN:-tcp-listen://127.0.0.1:9999}}"
+timeout="${READY_TIMEOUT:-20}"
+interval="${READY_POLL_INTERVAL:-0.2}"
+
+port="${listen##*:}"
+if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+  echo "rcp-wait-listen: cannot read a port from '$listen'" >&2
+  exit 2
+fi
+hex_port="$(printf '%04X' "$port")"
+
+SECONDS=0
+while (( SECONDS < timeout )); do
+  # State 0A = TCP_LISTEN.
+  if grep -qiE ":${hex_port} [0-9A-F:]+ 0A " /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+    exit 0
+  fi
+  sleep "$interval"
+done
+
+echo "Timed out waiting for zigbeed to listen on port $port" >&2
+exit 1

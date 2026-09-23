@@ -1,16 +1,16 @@
 [Unit]
 Description=Zigbee2MQTT (user)
-Requires=socat-zigbeed-pty.service zigbeed.service
-After=socat-zigbeed-pty.service zigbeed.service
+Requires=zigbeed.service
+After=zigbeed.service
 StartLimitIntervalSec=30s
 StartLimitBurst=5
 
 [Service]
 Type=simple
-Environment=Z2M_PTY=/tmp/ttyZ2M
+Environment=ZIGBEED_LISTEN=tcp-listen://127.0.0.1:9999
 EnvironmentFile=-%h/.config/rcp-stack/rcp-stack.env
-ExecStartPre=%h/.config/rcp-stack/bin/rcp-wait-pty /tmp/ttyZ2M
 ExecStartPre=%h/.config/rcp-stack/bin/rcp-wait-active zigbeed.service
+ExecStartPre=/bin/sh -c '%h/.config/rcp-stack/bin/rcp-wait-listen "$ZIGBEED_LISTEN"'
 ExecStartPre=%h/.config/rcp-stack/bin/rcp-check-command Z2M_COMMAND
 ExecStart=%h/.config/rcp-stack/bin/rcp-run-command Z2M_COMMAND
 Restart=on-failure

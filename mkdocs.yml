@@ -94,16 +94,14 @@ nav:
     - 2-Zigbee-Radio-Silabs-EFR32/README.md
     - Per-board builds: 2-Zigbee-Radio-Silabs-EFR32/boards/README.md
     - NCP (Zigbee2MQTT / ZHA): 2-Zigbee-Radio-Silabs-EFR32/24-NCP-UART-HW/README.md
-    - RCP (host-side EmberZNet 8.2):
+    - RCP (Zigbee 8.2 / Zigbee + Thread):
       - Overview: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/README.md
-      - EmberZNet 8.x guide: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md
-      - RCP stack: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/rcp-stack/README.md
-      - cpcd: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/cpcd/README.md
-      - zigbeed 8.2.2: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed-8.2.2/README.md
-      - zigbeed 7.5.1: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed-7.5.1/README.md
-      - Docker:
-        - Overview: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/README.md
-        - cpcd + zigbeed + otbr: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/README.md
+      - Docker stacks: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/README.md
+      - Zigbee + Thread (multi-PAN): 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/README.md
+      - Without Docker (rcp-stack): 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/rcp-stack/README.md
+      - Build cpcd: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/cpcd/README.md
+      - Build zigbeed: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed/README.md
+      - "Background: EmberZNet 8.x on Series 1": 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md
     - OT-RCP (Thread / Zigbee-on-Host):
       - Overview: 2-Zigbee-Radio-Silabs-EFR32/26-OT-RCP/README.md
       - Thread and Matter primer: 2-Zigbee-Radio-Silabs-EFR32/26-OT-RCP/THREAD-MATTER-PRIMER.md

@@ -70,7 +70,7 @@ Positional arguments:
   FIRMWARE     One of:
                  bootloader  Gecko Bootloader stage 2 (UART/Xmodem)
                  ncp         NCP-UART-HW  (EZSP, for Zigbee2MQTT/ZHA)
-                 rcp         RCP-UART-HW  (CPC multi-PAN)
+                 rcp         RCP-UART-HW  (CPC: zigbeed EZSP 18, + Thread)
                  otrcp       OT-RCP       (OpenThread + otbr-agent)
                  router      Z3 standalone Zigbee 3.0 router
                Numeric aliases 1-5 are also accepted.
@@ -80,7 +80,8 @@ Positional arguments:
                without RTS/CTS wiring declares lower ones in its board.env —
                the Sengled G4 defaults rcp and otrcp to 230400):
                  ncp     115200 (default), 230400, 460800, 691200, 892857
-                 rcp     115200, 230400, 460800 (default)
+                 rcp     460800 (default; the only lidl prebuilt), 230400
+                         (Sengled G4: build it first with build_rcp.sh)
                  otrcp   230400, 460800 (default)
                  router  115200 (default; only)
                Power users can build a custom-baud GBL with
@@ -348,7 +349,9 @@ esac
 #
 # Per-firmware baud sets (per CHANGELOG v3.0.0 max-tested values):
 #   NCP-UART-HW : 115200, 230400, 460800, 691200, 892857
-#   RCP-UART-HW : 115200, 230400, 460800           (cpcd POSIX cap)
+#   RCP-UART-HW : 230400, 460800                   (lidl ships 460800 only;
+#                                                    230400 = no-RTS/CTS boards,
+#                                                    build-it-yourself)
 #   OT-RCP      : 230400, 460800                    (460800 = otbr-agent ceiling;
 #                                                    230400 = no-RTS/CTS boards, #134)
 #   Z3-Router   : 115200                            (text CLI only)
@@ -356,7 +359,7 @@ esac
 # resolve_firmware <fw_choice> <baud> -> sets FIRMWARE global to GBL path
 
 NCP_BAUDS="115200 230400 460800 691200 892857"
-RCP_BAUDS="115200 230400 460800"
+RCP_BAUDS="230400 460800"
 OT_RCP_BAUDS="230400 460800"
 ROUTER_BAUDS="115200"
 

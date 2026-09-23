@@ -7,6 +7,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+# Defaults; rcp-stack.env (loaded next) overrides them.
+Environment=CPC_INSTANCE_NAME=cpcd_bringup
+Environment=CPC_SOCKET_DIR=/dev/shm/cpcd/cpcd_bringup
 EnvironmentFile=-%h/.config/rcp-stack/rcp-stack.env
 RuntimeDirectory=rcp-stack
 RuntimeDirectoryMode=0700

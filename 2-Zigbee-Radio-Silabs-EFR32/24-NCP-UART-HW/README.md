@@ -202,9 +202,20 @@ Add integration with:
 
 Default is **115200**. With the in-kernel UART bridge on kernel 6.18,
 rates up to **892857** are supported (115200, 230400, 460800, 691200,
-892857 tested). See
-[25-RCP-UART-HW](../25-RCP-UART-HW/README.md#baudrate-and-network-considerations)
-for the math behind 892857.
+892857 tested).
+
+#### Why 892857 and not 921600
+
+The RTL8196E UART has a **fixed 16× oversampling** with integer-only
+divisors and a 200 MHz bus clock, so the achievable baud is
+`200000000 / (16 × N)` for integer N. For 921600 the divisor falls at
+13.56 — neither 13 nor 14 gives acceptable error (−3.1% / +4.3%).
+
+**892857** = 200000000 / (16 × 14) hits an exact integer divisor: **0% baud
+error** on the RTL side. The EFR32 reaches 893023 with its fractional divider
+(0.02% mismatch). That is 7.7× the original 115200 and within 3% of 921600.
+The full divisor investigation is in
+[`POST-MORTEM-6.18.md`](../../3-Main-SoC-Realtek-RTL8196E/32-Kernel/POST-MORTEM-6.18.md).
 
 ```bash
 # 1. Build the GBL at the desired baud

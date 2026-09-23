@@ -129,7 +129,7 @@ Other formats (.s37, .hex, .bin) are generated in `build/` but not saved.
 
 > **UART baud rate:** Default is **115200**. With the in-kernel UART
 > bridge on kernel 6.18, rates up to **892857** are supported. See
-> [25-RCP-UART-HW](../25-RCP-UART-HW/README.md#baudrate-and-network-considerations) for details.
+> [24-NCP-UART-HW](../24-NCP-UART-HW/README.md#why-892857-and-not-921600) for details.
 
 Edit `patches/z3-router.slcp` to modify network parameters:
 

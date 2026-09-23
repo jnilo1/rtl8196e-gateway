@@ -90,8 +90,9 @@ the RCP is one step; deploying and maintaining `cpcd` and `zigbeed` is another.
 ./flash_efr32.sh -y -g <gateway-ip> rcp
 ```
 
-For Sengled, prefix the command with `BOARD=sengled-e39-g8c`; its safe default
-baud is selected automatically.
+No RCP image is shipped for the Sengled G4 (none has run on one yet); the
+[RCP guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/README.md#step-1-flash-the-rcp-firmware)
+shows how to build it at the board's 230400 operating point.
 
 Continue with the [RCP guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/README.md)
 and the [EmberZNet 8.x guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md).
@@ -151,7 +152,7 @@ normal defaults are:
 | Board | NCP | RCP | OT-RCP | Router |
 | --- | --- | --- | --- | --- |
 | Lidl | 115200 | 460800 | 460800 | 115200 |
-| Sengled G4 | 115200 | 230400 | 230400 | 115200 |
+| Sengled G4 | 115200 | 230400 (build it yourself) | 230400 | 115200 |
 
 The G4 has no RTS/CTS wiring and therefore uses board-specific flow control and
 safer high-speed defaults. Do not copy Lidl baud choices to it without reading

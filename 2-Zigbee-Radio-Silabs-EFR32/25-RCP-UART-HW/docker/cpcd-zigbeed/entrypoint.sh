@@ -4,7 +4,14 @@ set -e
 echo "=== cpcd-zigbeed container starting ==="
 echo "RCP endpoint: ${RCP_HOST}:${RCP_PORT}"
 echo "cpcd instance: ${CPCD_INSTANCE}"
-echo "Zigbeed port: ${ZIGBEED_PORT}"
+
+# zigbeed serves its single EZSP client (Zigbee2MQTT / ZHA) on a native TCP
+# listener; no PTY and no socat are involved.
+: "${ZIGBEED_PORT:=9999}"
+: "${ZIGBEED_BIND:=0.0.0.0}"
+ZIGBEED_INTERFACE="tcp-listen://${ZIGBEED_BIND}:${ZIGBEED_PORT}"
+echo "EZSP transport: TCP listen ${ZIGBEED_BIND}:${ZIGBEED_PORT}"
+export ZIGBEED_PORT ZIGBEED_INTERFACE
 
 # Create required directories
 mkdir -p /dev/shm/cpcd/${CPCD_INSTANCE}

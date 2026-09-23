@@ -334,7 +334,7 @@ echo "  Via J-Link: commander flash firmware/${OUT_BASE}.s37 --device ${TARGET_D
 echo ""
 echo "Host setup (Linux):"
 echo "  1. Build and install cpcd (see cpcd/README.md)"
-echo "  2. Build and install zigbeed (see zigbeed-8.2.2/README.md)"
+echo "  2. Build and install zigbeed (see zigbeed/README.md)"
 echo "  3. Configure and start with rcp-stack (see rcp-stack/README.md)"
 echo "  4. Connect Zigbee2MQTT to /tmp/ttyZ2M with adapter: ember"
 echo ""

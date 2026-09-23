@@ -46,7 +46,8 @@ short checklist at the top of that page.
 
 - **Local Zigbee coordinator** for Zigbee2MQTT or ZHA, with no vendor cloud
 - **Thread Border Router** with `otbr-agent` running on the gateway
-- **Modern host-side Zigbee stack** using RCP, `cpcd`, and `zigbeed`
+- **Modern host-side Zigbee stack** (EmberZNet 8.2 / EZSP 18) using RCP, `cpcd`,
+  and `zigbeed` — with experimental same-channel Zigbee + Thread on one radio
 - **Standalone Zigbee router** to extend an existing mesh
 - **SSH access** to BusyBox Linux with persistent configuration
 - **Network updates** for both the Linux system and the EFR32 radio

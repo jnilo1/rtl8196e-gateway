@@ -5,3 +5,7 @@
 **
 !docker/cpcd-zigbeed/**
 !cpcd/tcp-bus.patch
+!zigbeed/serial_adapter_posix.c
+!zigbeed/serial_adapter_posix.h
+!zigbeed/install_serial_adapter.sh
+!zigbeed/THIRD_PARTY_NOTICES

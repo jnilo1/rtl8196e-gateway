@@ -11,8 +11,13 @@ UNIT_DIR="$ROOT/systemd/user"
 UNITS=(
   cpcd-bringup.service
   zigbeed.service
-  socat-zigbeed-pty.service
   zigbee2mqtt.service
+)
+
+# Removed when zigbeed gained its native TCP listener; still stopped and
+# unlinked so an upgraded install does not keep a stray socat running.
+LEGACY_UNITS=(
+  socat-zigbeed-pty.service
 )
 
 log() {
@@ -50,12 +55,11 @@ open_editor() {
 set_defaults() {
   CPC_INSTANCE_NAME="${CPC_INSTANCE_NAME:-cpcd_bringup}"
   CPC_SOCKET_DIR="${CPC_SOCKET_DIR:-/dev/shm/cpcd/$CPC_INSTANCE_NAME}"
-  ZIGBEED_PTY="${ZIGBEED_PTY:-/tmp/ttyZigbeed}"
-  Z2M_PTY="${Z2M_PTY:-/tmp/ttyZ2M}"
+  ZIGBEED_LISTEN="${ZIGBEED_LISTEN:-tcp-listen://127.0.0.1:9999}"
   CPCD_CONF="${CPCD_CONF:-$HOME/.config/rcp-stack/cpcd.conf}"
   READY_TIMEOUT="${READY_TIMEOUT:-20}"
   READY_POLL_INTERVAL="${READY_POLL_INTERVAL:-0.2}"
-  export CPC_INSTANCE_NAME CPC_SOCKET_DIR ZIGBEED_PTY Z2M_PTY
+  export CPC_INSTANCE_NAME CPC_SOCKET_DIR ZIGBEED_LISTEN
   export CPCD_CONF READY_TIMEOUT READY_POLL_INTERVAL
 }
 
@@ -86,14 +90,14 @@ ensure_env() {
 # - \$CPC_INSTANCE_NAME (defaults to cpcd_bringup)
 # - \$CPC_SOCKET_DIR (defaults to /dev/shm/cpcd/\$CPC_INSTANCE_NAME)
 # - \$CPCD_CONF (defaults to \$HOME/.config/rcp-stack/cpcd.conf)
-# - \$ZIGBEED_PTY (defaults to /tmp/ttyZigbeed)
-# - \$Z2M_PTY (defaults to /tmp/ttyZ2M)
+# - \$ZIGBEED_LISTEN (defaults to tcp-listen://127.0.0.1:9999)
 #
-# CPCD_COMMAND='cpcd -c "$HOME/.config/rcp-stack/cpcd.conf"'
-# ZIGBEED_COMMAND='zigbeed -r "spinel+cpc://$CPC_INSTANCE_NAME?iid=1&iid-list=0" -p "$ZIGBEED_PTY" -d 5 -v 1'
-# Z2M_COMMAND=zigbee2mqtt
+# CPCD_COMMAND='cpcd -c "\$HOME/.config/rcp-stack/cpcd.conf"'
+# ZIGBEED_COMMAND='zigbeed -r "spinel+cpc://\$CPC_INSTANCE_NAME?iid=1&iid-list=0" -p "\$ZIGBEED_LISTEN"'
+# Z2M_COMMAND=zigbee2mqtt   # with serial.port: tcp://localhost:9999
 #
 # Optional:
+# ZIGBEED_LISTEN=tcp-listen://127.0.0.1:9999
 # CPC_INSTANCE_NAME=cpcd_bringup
 # CPC_SOCKET_DIR=/dev/shm/cpcd/cpcd_bringup
 # CPCD_CONF=$HOME/.config/rcp-stack/cpcd.conf
@@ -150,11 +154,26 @@ sync_scripts() {
   done
 }
 
+# Stop and unlink units an older rcp-stack installed. Only symlinks are
+# removed: a unit file the user wrote there is left alone.
+retire_legacy_units() {
+  local user_unit_dir unit
+  user_unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  for unit in "${LEGACY_UNITS[@]}"; do
+    systemctl --user stop "$unit" 2>/dev/null || true
+    if [ -L "$user_unit_dir/$unit" ]; then
+      rm -f "$user_unit_dir/$unit"
+    fi
+  done
+  rm -f "$BIN_DIR/rcp-wait-pty"
+}
+
 link_units() {
   local user_unit_dir
   user_unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   mkdir -p "$user_unit_dir"
   [ -d "$UNIT_DIR" ] || die "missing unit directory: $UNIT_DIR"
+  retire_legacy_units
   for unit in "${UNITS[@]}"; do
     local src="$UNIT_DIR/$unit"
     local dest="$user_unit_dir/$unit"
@@ -182,6 +201,13 @@ cmd_up() {
   set_defaults
 
   require_vars RCP_ENDPOINT CPCD_COMMAND ZIGBEED_COMMAND
+  case "$ZIGBEED_COMMAND" in
+    *ZIGBEED_PTY*|*/tmp/ttyZigbeed*)
+      die "ZIGBEED_COMMAND still uses the PTY ($ENV_FILE). zigbeed now listens on TCP:
+       replace '-p \"\$ZIGBEED_PTY\"' with '-p \"\$ZIGBEED_LISTEN\"', and set
+       Zigbee2MQTT's serial.port to tcp://localhost:9999."
+      ;;
+  esac
   ensure_cpcd_conf
 
   "$BIN_DIR/rcp-check-endpoint"
@@ -193,12 +219,9 @@ cmd_up() {
   systemctl --user start cpcd-bringup.service
   "$BIN_DIR/rcp-wait-cpcd"
 
-  systemctl --user start socat-zigbeed-pty.service
-  "$BIN_DIR/rcp-wait-pty" "$ZIGBEED_PTY"
-  "$BIN_DIR/rcp-wait-pty" "$Z2M_PTY"
-
   systemctl --user start zigbeed.service
   "$BIN_DIR/rcp-wait-active" zigbeed.service
+  "$BIN_DIR/rcp-wait-listen" "$ZIGBEED_LISTEN"
 
   if [ -n "${Z2M_COMMAND:-}" ]; then
     systemctl --user start zigbee2mqtt.service
@@ -213,7 +236,7 @@ cmd_down() {
   sync_scripts
   set_defaults
 
-  systemctl --user stop zigbee2mqtt.service zigbeed.service socat-zigbeed-pty.service cpcd-bringup.service 2>/dev/null || true
+  systemctl --user stop zigbee2mqtt.service zigbeed.service cpcd-bringup.service "${LEGACY_UNITS[@]}" 2>/dev/null || true
 
   "$BIN_DIR/rcp-cleanup" --all --socket-dir "$CPC_SOCKET_DIR"
 }
@@ -224,8 +247,12 @@ cmd_status() {
   log "Units:"
   systemctl --user --no-pager status "${UNITS[@]}" 2>/dev/null || true
   log ""
-  log "Symlinks:"
-  ls -l /tmp/ttyZigbeed /tmp/ttyZ2M 2>/dev/null || true
+  log "EZSP listener ($ZIGBEED_LISTEN):"
+  if READY_TIMEOUT=1 "$BIN_DIR/rcp-wait-listen" "$ZIGBEED_LISTEN" >/dev/null 2>&1; then
+    log "  listening"
+  else
+    log "  not listening"
+  fi
   log ""
   log "CPC sockets:"
   ls -l "$CPC_SOCKET_DIR" 2>/dev/null || true
@@ -251,7 +278,6 @@ cmd_doctor() {
 
   log "Filesystem state:"
   ls -ld "$CONFIG_DIR" "$STATE_DIR" "$KEY_DIR" "$CPC_SOCKET_DIR" 2>/dev/null || true
-  ls -l /tmp/ttyZigbeed /tmp/ttyZ2M 2>/dev/null || true
   log ""
 
   if [ -d "$CPC_SOCKET_DIR" ]; then
@@ -264,6 +290,17 @@ cmd_doctor() {
 
   if [ -z "${RCP_ENDPOINT:-}" ]; then
     log "warn: RCP_ENDPOINT is not set in $ENV_FILE"
+  fi
+
+  case "${ZIGBEED_COMMAND:-}" in
+    *ZIGBEED_PTY*|*/tmp/ttyZigbeed*)
+      log "warn: ZIGBEED_COMMAND still uses the PTY; use -p \"\$ZIGBEED_LISTEN\" (TCP)"
+      ;;
+  esac
+  if READY_TIMEOUT=1 "$BIN_DIR/rcp-wait-listen" "$ZIGBEED_LISTEN" >/dev/null 2>&1; then
+    log "EZSP listener: $ZIGBEED_LISTEN (listening)"
+  else
+    log "EZSP listener: $ZIGBEED_LISTEN (not listening)"
   fi
 
   if [ -e /usr/local/etc/zigbeed.conf ]; then
@@ -315,7 +352,7 @@ usage: rcp-stack <command>
 
 commands:
   up       start services and wait for readiness gates
-  down     stop services and cleanup symlinks/sockets
+  down     stop services and clean up CPC sockets
   status   show services and filesystem state
   doctor   collect diagnostics and logs
 EOF

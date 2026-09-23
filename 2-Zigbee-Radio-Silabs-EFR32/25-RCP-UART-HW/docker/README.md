@@ -1,4 +1,4 @@
-# Docker Stacks for RCP Firmware (EmberZNet 8.2.2)
+# Docker stacks: Zigbee (EZSP 18) and same-channel Zigbee + Thread
 
 The stable path runs Zigbee alone. An experimental second path runs Zigbee and
 Thread concurrently on a Lidl Series 1 radio, provided both networks use the
@@ -9,7 +9,7 @@ same 802.15.4 channel. See
 
 | # | Use case | Compose file | EFR32 firmware | Status |
 |---|----------|-------------|----------------|--------|
-| 1 | **Zigbee** (EmberZNet 8.2.2) | `docker-compose-zigbee.yml` | `./flash_efr32.sh rcp` | Tested, stable |
+| 1 | **Zigbee** (EmberZNet 8.2.2 / EZSP 18) | `docker-compose-zigbee.yml` | `./flash_efr32.sh rcp` | Tested, stable |
 | 2 | **Multi-PAN** (same-channel Zigbee + Thread) | `docker-compose-multipan.yml` | `./flash_efr32.sh rcp` | Experimental on Lidl EFR32MG1B ([limits](./cpcd-zigbeed-otbr/README.md)) |
 
 ```
@@ -59,13 +59,31 @@ repo root) and use the Thread Border Router compose at
 
 ---
 
-## Use Case 1: Zigbee — EmberZNet 8.2.2
+## Use Case 1: Zigbee — EmberZNet 8.2.2 / EZSP 18
 
-Runs Zigbee2MQTT with the `ember` adapter. The Zigbee stack (zigbeed,
-EmberZNet 8.2.2 / EZSP v18) runs in a Docker container that connects to
-the gateway's in-kernel UART bridge over TCP. Inside the container, `cpcd`
-uses its native `bus_type: TCP` to dial the bridge on `TCP:8888` directly —
-no `socat` PTY shim (see [`cpcd/README.md`](../cpcd/README.md)).
+Runs Zigbee2MQTT with the `ember` adapter. The Zigbee stack (`zigbeed`,
+EmberZNet 8.2.2 / EZSP 18, built from Simplicity SDK 2025.6.3) runs in the
+`cpcd-zigbeed` container:
+
+```text
+EFR32 RCP -> TCP :8888 -> cpcd -> CPC socket -> zigbeed -> native TCP :9999 -> Zigbee2MQTT
+```
+
+`cpcd` uses its native `bus_type: TCP` to dial the gateway bridge directly, and
+`zigbeed` listens natively on `:9999` (`tcp-listen://0.0.0.0:9999`) — no socat,
+no PTY. Zigbee2MQTT connects with:
+
+```yaml
+serial:
+  port: tcp://cpcd-zigbeed:9999
+  adapter: ember
+```
+
+The listener serves **one** EZSP client at a time: a second connection is
+closed without disturbing the active one, and when the client disconnects
+(Zigbee2MQTT restart) `zigbeed` and `cpcd` keep running and the next client
+reconnects to the same stack. The health check never connects to `:9999`; it
+checks the `cpcd` / `zigbeed` processes and the listening socket instead.
 
 ### Quick Start
 
@@ -105,8 +123,11 @@ ghcr.io/jnilo1/cpcd-zigbeed:latest
 
 | Tag | cpcd | EmberZNet | EZSP |
 |-----|------|-----------|------|
-| `latest` | 4.5.3 | 8.2.2 | v18 |
-| `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 | v18 |
+| `latest`, `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 | v18 |
+| `<release>` (e.g. `4.5.1`) | 4.5.3 | 8.2.2 | v18 |
+
+`latest` and `cpcd4.5.3-ezsp18` follow the latest release; the release tags
+are immutable.
 
 ### Services
 
@@ -170,8 +191,9 @@ Requires **Zigbee2MQTT 2.7.2 or newer** (for EZSP v18 support).
 
 ### "zigbeed entered FATAL state"
 
-Common causes: network instability (use Ethernet, not WiFi), or baudrate
-mismatch (must match RCP firmware, default 460800).
+Common causes: network instability (use Ethernet, not Wi-Fi), or a gateway
+bridge armed at a baud that does not match the RCP firmware (re-run
+`flash_efr32.sh`, which records the right baud in `radio.conf`).
 
 ---
 

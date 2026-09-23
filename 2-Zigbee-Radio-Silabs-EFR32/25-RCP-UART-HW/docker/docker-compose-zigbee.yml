@@ -53,7 +53,8 @@ services:
       # No baud setting here: cpcd talks TCP to the gateway's in-kernel
       # bridge, which arms the UART baud itself from radio.conf (written
       # by flash_efr32.sh at flash time).
-      # Port exposed to Z2M (internal to Docker network)
+      # zigbeed listens natively on tcp://cpcd-zigbeed:9999 (single client).
+      - ZIGBEED_BIND=0.0.0.0
       - ZIGBEED_PORT=9999
       # Set to 1 for debug logs, 0 for production
       - ZIGBEED_DEBUG=0
@@ -70,15 +71,10 @@ services:
     cap_add:
       - SYS_PTRACE
     healthcheck:
-      # Z2M waits for this before starting.
-      # The probe must NOT open a connection to the zigbeed port: socat
-      # serializes it (tcp-listen,fork,max-children=1), so once Z2M holds the
-      # single slot a connect-based probe (nc -z) piles up unaccepted in the
-      # listen backlog and eventually hangs to timeout -> the container flaps
-      # to "unhealthy" while the stack is fine. Confirm the LISTEN socket via
-      # /proc instead (no connect, no extra binaries). See CHANGELOG 3.8.1.
+      # Never connect to the single-client EZSP listener. Verify the daemon
+      # processes and listener through /proc instead.
       # ($$ escapes Compose interpolation so the shell sees a literal $.)
-      test: ["CMD-SHELL", "p=$$(printf '%04X' \"$$ZIGBEED_PORT\"); grep -qiE \":$$p [0-9A-F:]+ 0A \" /proc/net/tcp /proc/net/tcp6 2>/dev/null"]
+      test: ["CMD-SHELL", "pgrep -x cpcd >/dev/null && pgrep -x zigbeed >/dev/null && { p=$$(printf '%04X' \"$$ZIGBEED_PORT\"); grep -qiE \":$$p [0-9A-F:]+ 0A \" /proc/net/tcp /proc/net/tcp6 2>/dev/null; }"]
       interval: 30s
       timeout: 10s
       # zigbeed needs time to connect to cpcd and initialize

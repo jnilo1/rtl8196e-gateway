@@ -2,13 +2,12 @@
 
 Systemd --user manager for the complete RCP chain:
 ```
-RCP (EFR32) ←kernel UART bridge (TCP:8888)→ cpcd ←CPC→ zigbeed ←PTY→ socat ←PTY→ Z2M
+RCP (EFR32) ←kernel UART bridge (TCP:8888)→ cpcd ←CPC→ zigbeed ←TCP:9999→ Z2M
 ```
 
-> **Note:** cpcd uses its native `bus_type: TCP` (see [`../cpcd/README.md`](../cpcd/README.md))
-> to dial the gateway bridge directly. The former `socat-cpc-rcp` PTY hop in front
-> of cpcd is gone — `rcp-stack` now generates a `bus_type: TCP` cpcd.conf from
-> `RCP_ENDPOINT`. (socat is still used downstream, between zigbeed and Z2M.)
+TCP end to end, no socat: cpcd dials the gateway bridge with its native
+`bus_type: TCP` (see [`../cpcd/README.md`](../cpcd/README.md)), and zigbeed
+listens for Zigbee2MQTT on `127.0.0.1:9999` (see [`../zigbeed/README.md`](../zigbeed/README.md)).
 
 ## Architecture
 
@@ -19,14 +18,8 @@ RCP (EFR32) ←kernel UART bridge (TCP:8888)→ cpcd ←CPC→ zigbeed ←PTY→
    │     cpcd     │────────────────▶│   zigbeed    │
    │  (TCP bus)   │  /dev/shm/cpcd/ │ (EmberZNet)  │
    └──────┬───────┘                 └──────┬───────┘
-          │                                │ /tmp/ttyZigbeed
-          │                                ▼
-          │                       ┌──────────────────┐
-          │                       │ socat-zigbeed-pty│
-          │                       │   (PTY bridge)   │
-          │                       └────────┬─────────┘
-          │                                │ /tmp/ttyZ2M
-          │                                ▼
+          │                                │ TCP 127.0.0.1:9999
+          │                                ▼  (one client)
           │                       ┌──────────────────┐
           │                       │   Zigbee2MQTT    │
           │                       └──────────────────┘
@@ -42,10 +35,9 @@ RCP (EFR32) ←kernel UART bridge (TCP:8888)→ cpcd ←CPC→ zigbeed ←PTY→
 ## Prerequisites
 
 1. **cpcd** installed (`/usr/local/bin/cpcd`) - see `../cpcd/`
-2. **zigbeed** installed (`/usr/local/bin/zigbeed`) - see `../zigbeed-8.2.2/`
-3. **socat** installed (`apt install socat`)
-4. **In-kernel UART bridge** on the gateway (kernel 6.18 — exposes the RCP via TCP:8888, armed by S50uart_bridge at boot)
-5. **Direct Ethernet cable** between host and gateway (strongly recommended)
+2. **zigbeed** installed (`/usr/local/bin/zigbeed`) - see `../zigbeed/`
+3. **In-kernel UART bridge** on the gateway (kernel 6.18 — exposes the RCP via TCP:8888, armed by S50uart_bridge at boot)
+4. **Direct Ethernet cable** between host and gateway (strongly recommended)
 
 > **Network Quality:** The CPC protocol is sensitive to latency and packet loss.
 > For reliable operation, connect the gateway directly to the host with an Ethernet
@@ -77,14 +69,13 @@ RCP_ENDPOINT=tcp://192.168.1.100:8888
 
 # Commands for each service
 CPCD_COMMAND='cpcd -c "$HOME/.config/rcp-stack/cpcd.conf"'
-ZIGBEED_COMMAND='zigbeed -r "spinel+cpc://$CPC_INSTANCE_NAME?iid=1&iid-list=0" -p "$ZIGBEED_PTY"'
+ZIGBEED_COMMAND='zigbeed -r "spinel+cpc://$CPC_INSTANCE_NAME?iid=1&iid-list=0" -p "$ZIGBEED_LISTEN"'
 Z2M_COMMAND='zigbee2mqtt'
 
 # Optional (default values)
+# ZIGBEED_LISTEN=tcp-listen://127.0.0.1:9999
 # CPC_INSTANCE_NAME=cpcd_bringup
 # CPC_SOCKET_DIR=/dev/shm/cpcd/cpcd_bringup
-# ZIGBEED_PTY=/tmp/ttyZigbeed
-# Z2M_PTY=/tmp/ttyZ2M
 # RCP_ENDPOINT_TIMEOUT=5
 ```
 
@@ -123,9 +114,11 @@ The `rcp-stack up` command installs and starts these services in order:
 | Service | Description | Dependencies |
 |---------|-------------|--------------|
 | `cpcd-bringup.service` | CPC daemon (native TCP bus) | - |
-| `socat-zigbeed-pty.service` | PTY bridge zigbeed↔Z2M | - |
-| `zigbeed.service` | Zigbee daemon | cpcd, socat-zigbeed-pty |
-| `zigbee2mqtt.service` | Zigbee2MQTT | zigbeed |
+| `zigbeed.service` | Zigbee daemon, EZSP listener on `$ZIGBEED_LISTEN` | cpcd |
+| `zigbee2mqtt.service` | Zigbee2MQTT, started once zigbeed listens | zigbeed |
+
+`up` waits for zigbeed's listening socket by reading `/proc/net/tcp`: it never
+connects to port 9999, which serves a single client.
 
 ### Manual Service Management
 
@@ -138,7 +131,7 @@ systemctl --user restart zigbeed.service
 
 # Enable at boot (optional)
 systemctl --user enable cpcd-bringup.service \
-  socat-zigbeed-pty.service zigbeed.service zigbee2mqtt.service
+  zigbeed.service zigbee2mqtt.service
 loginctl enable-linger $USER
 ```
 
@@ -157,7 +150,7 @@ loginctl enable-linger $USER
     ├── rcp-run-command
     ├── rcp-wait-active
     ├── rcp-wait-cpcd
-    └── rcp-wait-pty
+    └── rcp-wait-listen
 
 ~/.local/state/rcp-stack/
 └── zigbeed/
@@ -166,10 +159,6 @@ loginctl enable-linger $USER
 /dev/shm/cpcd/cpcd_bringup/
 ├── cpcd.sock              # Main CPC socket
 └── ctrl.cpcd.sock         # Control socket
-
-/tmp/
-├── ttyZigbeed             # PTY: zigbeed output
-└── ttyZ2M                 # PTY: Z2M input
 ```
 
 ## Zigbee2MQTT Configuration
@@ -178,10 +167,13 @@ In `zigbee2mqtt/data/configuration.yaml`:
 
 ```yaml
 serial:
-  port: /tmp/ttyZ2M
+  port: tcp://localhost:9999
   adapter: ember
-  baudrate: 460800
 ```
+
+Zigbee2MQTT can restart freely: zigbeed and cpcd keep running and accept the
+new connection. A second simultaneous client is refused, so do not point
+another tool at port 9999 while Zigbee2MQTT is connected.
 
 ## Troubleshooting
 
@@ -221,8 +213,18 @@ rcp-stack up
 sudo chown -R $USER:$USER ~/.config/rcp-stack ~/.local/state/rcp-stack ~/.cpcd
 ```
 
-## Why socat for PTYs?
+### Upgrading from the PTY version
 
-1. **Stability**: PTYs created by zigbeed disappear if the process crashes
-2. **Decoupling**: Z2M can restart without losing the PTY
-3. **Stable symlinks**: `/tmp/ttyZ2M` always exists as long as socat runs
+Earlier rcp-stack versions ran socat between zigbeed and Zigbee2MQTT. `rcp-stack up`
+stops and unlinks the old `socat-zigbeed-pty.service` by itself, but refuses to
+start while `ZIGBEED_COMMAND` still passes the PTY. Edit
+`~/.config/rcp-stack/rcp-stack.env`:
+
+```bash
+# before
+ZIGBEED_COMMAND='zigbeed ... -p "$ZIGBEED_PTY"'
+# after
+ZIGBEED_COMMAND='zigbeed ... -p "$ZIGBEED_LISTEN"'
+```
+
+and set Zigbee2MQTT's `serial.port` to `tcp://localhost:9999`.

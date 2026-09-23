@@ -57,7 +57,7 @@ partner; cpcd connects to it over TCP) arms to match.
 | `BOARD_UART_FLOW` | `hw` (RTS/CTS handshake), `sw` (software XON/XOFF), or `none`. Also recorded by `flash_efr32.sh` into `radio.conf` as `FIRMWARE_FLOW_CTRL` on every app flash (#141), so the host side follows automatically. For OT-RCP it additionally selects the UART backend: `sw` → `iostream_usart` (complete XON/XOFF), `hw`/`none` → `uartdrv_usart` (DMA — #142) |
 | `BOARD_UART_CTS` / `_RTS` | `"<port-letter> <pin> <location>"`; ignored when flow ≠ `hw` |
 | `BOARD_RCP_DEFAULT_BAUD` / `BOARD_OT_RCP_DEFAULT_BAUD` | **Optional.** The baud `flash_efr32.sh` offers by default for that firmware on this board, overriding the project default (460800, which assumes the reference board's RTS/CTS wiring). A board without it has a lower ceiling — the G4 sets both to `230400` (#134, #142). Refused at board-selection time if outside the firmware's supported set |
-| `BOARD_NCP_BAUDS` / `BOARD_RCP_BAUDS` / `BOARD_OT_RCP_BAUDS` / `BOARD_ROUTER_BAUDS` | **Optional.** The bauds this board commits prebuilts for, i.e. what `BOARD=<board> ./make-all-bauds.sh` builds. Each key falls back to the reference matrix when absent, so a board declares only the rows it changes (the G4 declares all four: one baud per firmware) |
+| `BOARD_NCP_BAUDS` / `BOARD_RCP_BAUDS` / `BOARD_OT_RCP_BAUDS` / `BOARD_ROUTER_BAUDS` | **Optional.** The bauds this board commits prebuilts for, i.e. what `BOARD=<board> ./make-all-bauds.sh` builds. Each key falls back to the reference matrix when absent, so a board declares only the rows it changes (the G4 declares all four: one baud per firmware, and an empty `BOARD_RCP_BAUDS=""` for "no committed RCP") |
 | `BOARD_BTL_ACTIVATION_PIN` | **Optional.** `"<port-letter> <pin>"` — the EFR32 pin the host can pull to force the radio into its bootloader. Set it only if the board actually wires such a line to a SoC GPIO (the Sengled G4 does: `blmode-gpios` in its devicetree; the Lidl does not). `build_bootloader.sh` then adds the `bootloader_gpio_activation` component and points it at this pin, active LOW (#148). Omit the key and the bootloader is built exactly as before |
 | `BOARD_BTL_CUSTOMER` | Bootloader revision — the low 16 bits of the Gecko version word (`major<<24 \| minor<<16 \| customer`). `2.4` is Silicon Labs'; this third number is the customer field, which the SDK leaves to the integrator. **Bump it whenever this board's bootloader binary changes**: the chip installs a stage-2 image over UART only if its version is *strictly greater* than the running one, and declines in silence otherwise — after staging the image inside application space, which erases the app (#148). Default `2`. Lidl stays `2` (its bootloader has not changed); the G4 is `3` (it gained GPIO activation) |
 
@@ -81,7 +81,7 @@ a patch — the generated init code keys off the same `_FLOW_CONTROL_TYPE` token
 > UART on the **same USART/pins as Lidl** (USART0, PA0/PA1), confirmed on hardware
 > by @hlyi — so the firmware is electrically correct, not just structurally.
 
-Every G4 firmware now ships prebuilt, so a G4 user needs no toolchain. The
+Every G4 firmware except the RCP ships prebuilt. The
 images were built from the board facts above; **what differs between them is
 how much hardware evidence stands behind each one**, and that is worth reading
 before you flash:
@@ -91,7 +91,7 @@ before you flash:
 | NCP | `ncp-uart-hw-7.5.1-115200-sw-sengled-e39-g8c.gbl` | 115200 | Flashed to a real G4 and validated end-to-end — Home Assistant talks to the radio (#130). |
 | Gecko bootloader | `bootloader-uart-xmodem-2.4.3-sengled-e39-g8c.gbl` | — | Run on @hlyi's G4: GPIO activation on PB15 drops the chip into the Gecko Bootloader (#148). |
 | OT-RCP | `ot-rcp-230400-sw-iostream-sengled-e39-g8c.gbl` | 230400 | 230400 is @hlyi's measured operating point on this board (#134, #142); at 460800 the host's 16-byte RX FIFO overruns. Our build of those sources, not the binary he ran. |
-| RCP | `rcp-uart-802154-230400-none-sengled-e39-g8c.gbl` | 230400 | **Never run on a G4.** Flow clamped to none (CPC has no XON/XOFF; recorded as none in `radio.conf` so the bridge matches). |
+| RCP | *not shipped* — build it with `BOARD=sengled-e39-g8c ./25-RCP-UART-HW/build_rcp.sh 230400` | 230400 | **Never run on a G4**, so no prebuilt is committed. Flow clamped to none (CPC has no XON/XOFF; recorded as none in `radio.conf` so the bridge matches). |
 | Z3 Router | `z3-router-7.5.1-115200-sw-sengled-e39-g8c.gbl` | 115200 | **Never run on a G4** (#143). |
 
 The bauds above are what `flash_efr32.sh` picks by itself on this board — the
@@ -103,14 +103,14 @@ it with a debugger attached. Its build is structurally verified too — correct
 GCC xG13 first stage, placed in the MG13's dedicated bootloader region at
 `0x0FE10000` (#143).
 
-Rebuild the four application images in one shot — `make-all-bauds.sh` takes the
+Rebuild the three committed application images in one shot — `make-all-bauds.sh` takes the
 same `BOARD=` selector and reads the board's committed matrix from its
 `board.env` (`BOARD_NCP_BAUDS` and friends):
 
 ```bash
 BOARD=sengled-e39-g8c ./make-all-bauds.sh --list   # what it would build
 BOARD=sengled-e39-g8c ./make-all-bauds.sh          # build what's missing
-BOARD=sengled-e39-g8c ./make-all-bauds.sh --force  # rebuild all four
+BOARD=sengled-e39-g8c ./make-all-bauds.sh --force  # rebuild all three
 ```
 
 Or one at a time, with the exact commands that produced the committed images

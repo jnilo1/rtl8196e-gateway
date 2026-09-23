@@ -22,6 +22,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --all)
+      # PTY links left behind by rcp-stack versions that ran socat.
       symlinks+=("/tmp/ttyZigbeed" "/tmp/ttyZ2M")
       socket_dir="${socket_dir:-${CPC_SOCKET_DIR:-}}"
       shift

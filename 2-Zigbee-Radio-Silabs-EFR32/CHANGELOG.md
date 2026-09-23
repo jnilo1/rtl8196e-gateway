@@ -4,6 +4,101 @@ All notable changes to the EFR32 firmware and tooling are documented here.
 
 ---
 
+## [4.5.2] - 2026-09-23
+
+### zigbeed serves Zigbee2MQTT over native TCP — contributed by @mbjd05 (#162)
+
+**This is @mbjd05's work**, his second major contribution to the RCP stack
+after the same-channel Zigbee + Thread multi-PAN of 4.5.1 (#161). He designed
+and wrote a project-owned EZSP transport for `zigbeed`
+(`zigbeed/serial_adapter_posix.c`), its build-time substitution
+(`install_serial_adapter.sh`), its unit tests and its licence notices, and
+tested it end to end with Zigbee2MQTT before proposing it. When the first
+version's provenance was questioned, he rewrote the mainloop integration from
+OpenThread's BSD-licensed sources and documented it precisely. It removes the
+last `socat` hop of the RCP host stack.
+
+What it does: besides the upstream PTY behaviour, zigbeed accepts
+`-p tcp-listen://HOST:PORT`. It listens itself, serves one EZSP client at a
+time (a second connection is closed without disturbing the active one), and
+keeps running with cpcd when the client disconnects, so a restarted
+Zigbee2MQTT reconnects to the same stack — even across zigbeed's own
+re-execution on an ASH reset, which inherits the listening socket. The adapter
+is written against the Simplicity SDK 2025.6.3 headers; Silicon Labs'
+`serial_adapter.c` is neither shipped nor linked. Its mainloop integration is
+adapted from OpenThread (BSD-3-Clause; notice in `zigbeed/THIRD_PARTY_NOTICES`,
+installed with the binary).
+
+The follow-ups below were made during integration, on top of his adapter:
+batched writes, a TCP-only image (his proposal kept PTY as a selectable image
+mode; the adapter still supports it) and the native `rcp-stack`.
+
+The adapter now queues outgoing bytes and flushes them once per mainloop tick,
+before it polls: ASH writes a frame byte by byte and never marks its end, so
+flushing per byte had put one TCP segment on the wire per byte (`TCP_NODELAY`).
+Measured on the Lidl bench over the same Zigbee2MQTT start-up plus 60 s:
+1,057 bytes in 52 data segments instead of 1,060 in 1,021.
+
+The `cpcd-zigbeed` image now always uses that listener: the chain is
+`RCP → gateway TCP:8888 → cpcd → zigbeed → TCP:9999 → Zigbee2MQTT`, TCP end to
+end. The PTY/socat programs, `ZIGBEED_TRANSPORT` and the `socat` package are
+gone from the image; the Zigbee2MQTT endpoint (`tcp://cpcd-zigbeed:9999`) is
+unchanged. The health check now also requires the `cpcd` and `zigbeed`
+processes. The previous image stays available as the `4.5.1` tag.
+
+Validated on a Lidl gateway (RCP 460800, RTS/CTS): EZSP 18 / EmberZNet 8.2.2
+network up, second client rejected, Zigbee2MQTT restart reconnecting without a
+container restart, no UART overrun. The multi-PAN compose — whose
+`cpcd4.5.3-ezsp18` pin points to this image once the release moves the tag —
+was run with it too: zigbeed on IID 1 and a freshly formed Thread network
+(leader) on IID 2 shared channel 11, and a Zigbee2MQTT restart reconnected
+while Thread stayed leader, with no container restart. That run skipped the
+host IPv6-forwarding sysctls, so it covers radio sharing, not Thread border
+routing.
+
+### rcp-stack — the native install drops socat too
+
+`rcp-stack` now runs zigbeed with `-p "$ZIGBEED_LISTEN"` (default
+`tcp-listen://127.0.0.1:9999`) and Zigbee2MQTT connects to
+`tcp://localhost:9999`: `socat-zigbeed-pty.service` and `rcp-wait-pty` are
+gone, and `socat` is no longer a prerequisite. `up` waits for the listening
+socket through `/proc/net/tcp` (`rcp-wait-listen`), never by connecting to the
+single-client port. An upgraded install is handled: `up` stops and unlinks the
+old socat unit, and refuses to start — with the one-line fix — while
+`rcp-stack.env` still passes `$ZIGBEED_PTY`.
+
+Two pre-existing defects made a fresh `rcp-stack up` fail and are fixed:
+`rcp-check-cpcd-conf` still demanded the `socket_folder` key that the generated
+`cpcd.conf` had dropped on purpose (cpcd ignores it and always uses
+`/dev/shm/cpcd/<instance_name>`), and the systemd units never defined
+`CPC_INSTANCE_NAME`, so zigbeed was started with `spinel+cpc://?iid=1`. The
+check now compares `instance_name`, and the units carry the defaults.
+
+Validated on the same gateway with the cpcd and zigbeed binaries of the Docker
+image: legacy-config refusal and socat-unit removal, then EZSP 18 network up,
+Zigbee2MQTT restart reconnecting with no zigbeed restart, no socat process,
+`status`/`down` clean.
+
+### RCP tree reorganised — breaking for builds from source
+
+- **zigbeed 7.5.1 removed.** Its EZSP 13 is what the on-chip NCP firmware
+  already offers; use `24-NCP-UART-HW` for it.
+- **`zigbeed-8.2.2/` renamed `zigbeed/`.** Update any script that calls
+  `zigbeed-8.2.2/build_zigbeed.sh`.
+- **One RCP prebuilt:** `rcp-uart-802154-460800-hw.gbl` (Lidl). The Lidl 115200 /
+  230400 images, the baud-less `rcp-uart-802154.gbl` and every Sengled G4 RCP
+  image (never run on a G4, including the experimental BLE-HCI one) are gone.
+  A G4 user builds the RCP with `BOARD=sengled-e39-g8c ./build_rcp.sh 230400`;
+  `flash_efr32.sh` still accepts 230400 and prints that command when the image
+  is missing.
+- **Documentation rewritten around use cases:** the RCP README starts from
+  "Zigbee" vs "Zigbee + Thread on the same channel", then flash → host stack;
+  `EMBERZNET-8.x-GUIDE.md` keeps only the background (its install steps
+  duplicated `rcp-stack/` and described a `socat-cpc-rcp` service that no
+  longer exists); the 892857 divisor explanation moves to the NCP README.
+
+---
+
 ## [4.5.1] - 2026-09-21
 
 ### Experimental same-channel Zigbee + Thread multi-PAN restored (#160, #161)

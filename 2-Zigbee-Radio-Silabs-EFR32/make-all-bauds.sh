@@ -7,16 +7,17 @@
 #
 # Matrix — lidl, the reference board (per CHANGELOG v3.0.0 max-tested values):
 #   NCP-UART-HW : 115200, 230400, 460800, 691200, 892857
-#   RCP-UART-HW : 115200, 230400, 460800           (cpcd POSIX cap)
+#   RCP-UART-HW : 460800                            (the only RCP baud in use)
 #   OT-RCP      : 460800                            (otbr-agent ceiling)
 #   Z3-Router   : 115200                            (text CLI only)
-# Total: 10 GBLs.
+# Total: 8 GBLs.
 #
 # Another board keeps its matrix in boards/<board>/board.env — BOARD_NCP_BAUDS,
 # BOARD_RCP_BAUDS, BOARD_OT_RCP_BAUDS, BOARD_ROUTER_BAUDS — and any key it
-# leaves out falls back to the row above. The Sengled G4 commits 4 GBLs:
-# NCP 115200, RCP 230400, OT-RCP 230400, Router 115200 (230400 being its
-# measured operating point, #134/#142). The Gecko bootloader is not part of
+# leaves out falls back to the row above; a key set to "" means the board
+# commits no prebuilt for that firmware. The Sengled G4 commits 3 GBLs:
+# NCP 115200, OT-RCP 230400, Router 115200 (230400 being its measured
+# operating point, #134/#142); its RCP is build-it-yourself. The Gecko bootloader is not part of
 # this matrix: it carries no baud (build_bootloader.sh builds it in one shot).
 #
 # Output: <firmware-dir>/firmware/<base>-<BAUD>-<flow>[-<driver>][-<board>].gbl
@@ -58,7 +59,9 @@ export BOARD
 
 # ----- matrix (board.env overrides the reference row, key by key) -----
 NCP_BAUDS="${BOARD_NCP_BAUDS:-115200 230400 460800 691200 892857}"
-RCP_BAUDS="${BOARD_RCP_BAUDS:-115200 230400 460800}"
+# RCP uses "-" rather than ":-": an explicitly empty BOARD_RCP_BAUDS means
+# "no committed RCP" (Sengled G4), not "fall back to the reference row".
+RCP_BAUDS="${BOARD_RCP_BAUDS-460800}"
 OT_RCP_BAUDS="${BOARD_OT_RCP_BAUDS:-460800}"
 ROUTER_BAUDS="${BOARD_ROUTER_BAUDS:-115200}"
 

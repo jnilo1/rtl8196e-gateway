@@ -13,7 +13,7 @@ interface, not part of the standard installation.
 | Firmware | Use it for | Recommended audience |
 | --- | --- | --- |
 | **NCP-UART-HW** | Zigbee2MQTT or ZHA coordinator | Most users |
-| **RCP-UART-HW** | `cpcd` + host-side `zigbeed` / EmberZNet 8.2 | Advanced users |
+| **RCP-UART-HW** | `cpcd` + host-side `zigbeed` / EmberZNet 8.2, optionally with Thread on the same channel | Advanced users |
 | **OT-RCP** | Thread Border Router, external OTBR, or Zigbee-on-Host | Thread/advanced users |
 | **Z3 Router** | Standalone Zigbee mesh extender | Users who do not need a coordinator |
 | **Gecko Bootloader** | Radio application updates and specialist recovery | Normally managed automatically |
@@ -79,10 +79,14 @@ Reference: [NCP-UART-HW](./24-NCP-UART-HW/README.md).
 
 The EFR32 runs only the 802.15.4 radio layer and speaks CPC. `cpcd` and
 `zigbeed` run on a host, allowing EmberZNet 8.2.2 / EZSP v18 on Series-1 radio
-hardware. This path is intentionally more complex than NCP.
+hardware. On the Lidl radio the same image can also carry Thread, experimentally
+and only on the Zigbee channel (multi-PAN). This path is intentionally more
+complex than NCP. The only prebuilt RCP image is the Lidl one (460800); a
+Sengled G4 user builds it first.
 
-References: [RCP-UART-HW](./25-RCP-UART-HW/README.md) and
-[EmberZNet 8.x guide](./25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md).
+References: [RCP-UART-HW](./25-RCP-UART-HW/README.md),
+[multi-PAN guide](./25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/README.md) and
+[EmberZNet 8.x background](./25-RCP-UART-HW/EMBERZNET-8.x-GUIDE.md).
 
 ### OT-RCP
 
@@ -156,7 +160,8 @@ References: [two-stage bootloader](./23-Bootloader-UART-Xmodem/README.md),
 
 ## Build from source
 
-Pre-built `.gbl` and `.s37` artifacts are committed for supported boards. To
+Pre-built `.gbl` and `.s37` artifacts are committed for supported boards (the
+Sengled G4 RCP excepted, see [per-board builds](./boards/README.md)). To
 modify them, first install the complete
 [build environment](../1-Build-Environment/README.md), then use:
 

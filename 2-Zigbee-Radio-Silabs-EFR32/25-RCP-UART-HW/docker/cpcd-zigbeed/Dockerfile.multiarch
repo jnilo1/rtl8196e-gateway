@@ -11,14 +11,15 @@
 #   - zigbeed: EmberZNet 8.2.2 / EZSP 18 (from Simplicity SDK 2025.6.3)
 #
 # Architecture:
-#   TCP:8888 (gateway) -> cpcd (native TCP bus) -> zigbeed -> socat -> TCP:9999 (Z2M)
+#   TCP:8888 (gateway) -> cpcd (native TCP bus) -> zigbeed -> TCP:9999 (Z2M)
 
 # ============================================================
 # Stage 1: Generator (x86_64 only)
 # Generates zigbeed project files for all target architectures
 # slc-cli is only available for x86_64
 # ============================================================
-FROM --platform=linux/amd64 ubuntu:24.04 AS generator
+ARG BUILDPLATFORM
+FROM --platform=${BUILDPLATFORM} ubuntu:24.04 AS generator
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SIMPLICITY_SDK_VERSION=v2025.6.3
@@ -50,6 +51,10 @@ RUN curl -fsSL "https://www.silabs.com/documents/login/software/slc_cli_linux.zi
     chmod +x /opt/slc_cli/slc
 
 ENV PATH="/opt/slc_cli:${PATH}"
+COPY zigbeed/serial_adapter_posix.c /opt/jnilo1-zigbeed/serial_adapter_posix.c
+COPY zigbeed/serial_adapter_posix.h /opt/jnilo1-zigbeed/serial_adapter_posix.h
+COPY zigbeed/install_serial_adapter.sh /opt/jnilo1-zigbeed/install_serial_adapter.sh
+RUN chmod +x /opt/jnilo1-zigbeed/install_serial_adapter.sh
 
 # Trust SDK
 RUN slc signature trust --sdk "${SIMPLICITY_SDK}" 2>/dev/null || true
@@ -65,6 +70,7 @@ RUN slc generate zigbeed.slcp \
     --without=zigbee_recommended_linux_arch \
     -o makefile \
     --force 2>&1 | tail -5
+RUN /opt/jnilo1-zigbeed/install_serial_adapter.sh /generated/amd64
 RUN rm -rf simplicity_sdk_* && ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
 
 # Generate zigbeed project for arm64
@@ -78,6 +84,7 @@ RUN slc generate zigbeed.slcp \
     --without=zigbee_recommended_linux_arch \
     -o makefile \
     --force 2>&1 | tail -5
+RUN /opt/jnilo1-zigbeed/install_serial_adapter.sh /generated/arm64
 RUN rm -rf simplicity_sdk_* && ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
 
 # ============================================================
@@ -148,7 +155,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    socat \
     supervisor \
     netcat-openbsd \
     gettext-base \
@@ -162,7 +168,11 @@ COPY --from=builder /install/usr/local /usr/local
 RUN ldconfig
 
 # Create directories
-RUN mkdir -p /etc/cpcd /var/lib/zigbeed /run/cpcd /var/log/supervisor
+RUN mkdir -p /etc/cpcd /var/lib/zigbeed /run/cpcd /var/log/supervisor \
+    /usr/share/doc/zigbeed
+
+# License notice for the OpenThread-derived mainloop integration.
+COPY zigbeed/THIRD_PARTY_NOTICES /usr/share/doc/zigbeed/THIRD_PARTY_NOTICES
 
 # Copy configuration files
 COPY docker/cpcd-zigbeed/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -180,20 +190,15 @@ ENV ZIGBEED_PORT=9999
 ENV ZIGBEED_DEBUG=0
 ENV ZIGBEED_IID=1
 ENV CPC_BROADCAST_IID=0
+ENV ZIGBEED_BIND=0.0.0.0
 
 # Expose port for Z2M connection
 EXPOSE 9999
 
-# Health check.
-# The probe must NOT open a connection to ZIGBEED_PORT: socat-zigbeed serializes
-# that port (tcp-listen,fork,max-children=1), so once a client (Z2M) holds the
-# single slot, socat stops calling accept(). A `nc -z` probe then piles up
-# unaccepted in the listen backlog; once the backlog fills, every subsequent
-# connect() hangs until the 10 s timeout -> the container flaps to "unhealthy"
-# even though the stack is fine. Instead, confirm a LISTEN socket exists on
-# ZIGBEED_PORT via /proc/net (no connect, no extra binaries).
+# Health check: do not connect to the single-client EZSP port. Confirm CPCd
+# and Zigbeed processes plus a listener on ZIGBEED_PORT through /proc instead.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD p=$(printf "%04X" "$ZIGBEED_PORT"); grep -qiE ":$p [0-9A-F:]+ 0A " /proc/net/tcp /proc/net/tcp6 2>/dev/null
+    CMD pgrep -x cpcd >/dev/null && pgrep -x zigbeed >/dev/null && { p=$(printf "%04X" "$ZIGBEED_PORT"); grep -qiE ":$p [0-9A-F:]+ 0A " /proc/net/tcp /proc/net/tcp6 2>/dev/null; }
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
