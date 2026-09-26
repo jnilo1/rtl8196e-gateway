@@ -177,14 +177,31 @@ flash chip, a **GigaDevice GD25Q127C** (16 MiB SPI NOR, green in the
 - A **CH341A** USB SPI programmer (inexpensive and widely available). Use its
   25xx SPI flash socket.
 - A **200–209 mil SOP8** socket adapter. The GD25Q127C sits in the wide-body
-  SOP8 package: a narrow 150 mil SOP8 adapter does not fit it. Seat the chip squarely in the socket with its pin 1 mark
-  on the socket's pin 1 side.
+  SOP8 package: a narrow 150 mil SOP8 adapter does not fit it. Seat the chip
+  squarely in the socket with its pin 1 mark on the socket's pin 1 side.
 - Flux and either desoldering braid or a small desoldering pump, to remove the
   chip and to solder it back afterwards.
 
 <p align="center">
   <img src="./media/image1.jpeg" alt="CH341A programmer with the GD25Q127C flash chip seated in a 200–209 mil SOP8 socket adapter" width="50%">
 </p>
+
+### Software
+
+[flashrom](https://www.flashrom.org/) is the open-source utility that talks to
+the CH341A: it identifies the SPI flash chip, reads its full contents to a file,
+and writes a file back with an erase, write and verify cycle. It runs on the
+Linux computer the programmer is plugged into; nothing runs on the gateway.
+
+Most distributions package it:
+
+```bash
+sudo apt install flashrom      # Debian / Ubuntu
+sudo dnf install flashrom      # Fedora
+```
+
+Accessing the USB programmer usually needs root: if flashrom reports a
+permission error or finds no programmer, run the same commands with `sudo`.
 
 ### Detect the chip
 
