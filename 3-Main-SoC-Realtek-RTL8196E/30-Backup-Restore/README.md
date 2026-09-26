@@ -163,22 +163,54 @@ understand the active layout and image headers.
 ## Method 3 — External SPI programmer
 
 Use an external programmer only if the Realtek bootloader cannot read/write the
-flash. On this board, an in-circuit SOP8 clip does not work reliably; the flash
-chip must be desoldered.
+flash, for example when the console stays completely silent at power-on even
+though the serial wiring has been verified. It is the last-resort path: the
+flash chip, a **GigaDevice GD25Q127C** (16 MiB SPI NOR, green in the
+[PCB photo](../../0-Hardware/README.md#pcb-overview-and-j1-location)), must be
+**desoldered** from the board.
 
-Required equipment:
+> A programming clip does **not** work on this board. Reading or writing the
+> chip in circuit is not reliable; do not attempt it.
 
-- CH341A-compatible SPI programmer configured for 25xx flash;
-- SOP8-to-DIP adapter for the package width;
-- appropriate soldering, flux, and ESD tools.
+### Hardware
 
-Detect the chip:
+- A **CH341A** USB SPI programmer (inexpensive and widely available). Use its
+  25xx SPI flash socket.
+- A **200–209 mil SOP8** socket adapter. The GD25Q127C sits in the wide-body
+  SOP8 package: a narrow 150 mil SOP8 adapter does not fit it. Seat the chip squarely in the socket with its pin 1 mark
+  on the socket's pin 1 side.
+- Flux and either desoldering braid or a small desoldering pump, to remove the
+  chip and to solder it back afterwards.
+
+<p align="center">
+  <img src="./media/image1.jpeg" alt="CH341A programmer with the GD25Q127C flash chip seated in a 200–209 mil SOP8 socket adapter" width="50%">
+</p>
+
+### Detect the chip
+
+flashrom reports the GD25Q127C as `GD25Q128C` (same JEDEC ID `C8 40 18`); use
+that name in every command:
 
 ```bash
 flashrom -p ch341a_spi -c GD25Q128C
 ```
 
-Read it at least twice and compare hashes:
+Expected output:
+
+```text
+Found GigaDevice flash chip "GD25Q128C" (16384 kB, SPI) on ch341a_spi.
+No operations were specified.
+```
+
+If the chip is not detected, check that it is correctly seated and oriented
+first. If the flashrom version packaged by your distribution still does not
+find it, install the latest version from [flashrom.org](https://www.flashrom.org/).
+
+### Read (backup)
+
+Read the chip at least twice and compare the hashes before anything else. The
+read also shows what is actually on the flash, which is worth keeping when
+diagnosing a failed install:
 
 ```bash
 flashrom -p ch341a_spi -c GD25Q128C -r fullflash-read1.bin
@@ -186,13 +218,35 @@ flashrom -p ch341a_spi -c GD25Q128C -r fullflash-read2.bin
 sha256sum fullflash-read1.bin fullflash-read2.bin
 ```
 
-Only after matching reads should a restore be considered:
+Different hashes mean an unreliable contact: re-seat the chip and read again.
+
+### Write (restore)
+
+Only after matching reads should a restore be considered. Write either a
+verified backup (Method 1 or 2) or an image assembled by `./build_fullflash.sh`
+at the repository root:
 
 ```bash
 flashrom -p ch341a_spi -c GD25Q128C -w fullflash.bin
 ```
 
-Writing the wrong image or using the wrong voltage can make recovery harder.
+The output ends with:
+
+```text
+Found GigaDevice flash chip "GD25Q128C" (16384 kB, SPI) on ch341a_spi.
+Reading old flash chip contents... done.
+Updating flash chip contents... Erase/write done from 0 to ffffff
+Verifying flash... VERIFIED.
+```
+
+- This completely overwrites the chip.
+- The image must be exactly **16 MiB (16,777,216 bytes)** and belong to the
+  same board: the bootloader it contains carries board-specific DRAM settings.
+- The write takes several minutes; wait for `VERIFIED.` before removing the
+  chip.
+
+Then solder the chip back, respecting its orientation, and power the gateway
+with the serial console connected: the bootloader banner confirms the restore.
 
 ## Utilities
 
