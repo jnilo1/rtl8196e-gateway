@@ -124,10 +124,11 @@ ghcr.io/jnilo1/cpcd-zigbeed:latest
 | Tag | cpcd | EmberZNet | EZSP |
 |-----|------|-----------|------|
 | `latest`, `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 | v18 |
-| `<release>` (e.g. `4.5.1`) | 4.5.3 | 8.2.2 | v18 |
+| `<release>` (e.g. `4.5.2`) | 4.5.3 | 8.2.2 | v18 |
 
-`latest` and `cpcd4.5.3-ezsp18` follow the latest release; the release tags
-are immutable.
+`latest` and `cpcd4.5.3-ezsp18` follow the latest release that changed the
+image; the release tags are immutable. A release that leaves the image alone
+publishes no new tag: use the most recent one.
 
 ### Services
 

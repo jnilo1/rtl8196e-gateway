@@ -7,11 +7,12 @@
 #
 #   "FFCS" | image length (BE32) | CRC-32 of the image minus these 16 bytes (BE32) | ~CRC (BE32)
 #
-# An image without a trailer (16 x 0xFF) is still accepted by every loader:
-# the raw fullflash path then relies on the kernel checksum alone, as it did
-# before the trailer existed.  A tail that is neither blank nor a matching
-# trailer is refused by the V3.1 loader.  Loaders older than V3.1 ignore the
-# trailer and write it to flash as ordinary data.
+# The V3.1 loader requires the trailer: an image without one (16 x 0xFF),
+# with foreign bytes there, or whose CRC does not match is refused before
+# anything is erased.  Loaders older than V3.1 ignore the trailer and write
+# it to flash as ordinary data, so a signed image suits every loader.  An
+# older unsigned image (one built or backed up before V3.1) is made
+# acceptable by `lib/fullflash_crc.sh write FILE`.
 #
 # Used by build_fullflash.sh / create_fullflash.sh (write), backup_gateway.sh
 # (write — the flash content changed since the image was built, so the
@@ -56,16 +57,17 @@ ffcrc_write() {
     printf '%08x\n' "$crc"
 }
 
-# ffcrc_check FILE — 0 valid trailer, 1 no trailer (accepted by the loader,
-# kernel checksum only), 2 CRC mismatch, 3 foreign data where the trailer
-# should be (2 and 3 are refused by the loader).  Prints one line on stdout.
+# ffcrc_check FILE — 0 valid trailer, 1 no trailer (refused by the V3.1
+# loader, accepted by older ones), 2 CRC mismatch, 3 foreign data where the
+# trailer should be (2 and 3 are refused by the loader).  Prints one line on
+# stdout.
 # Callers under set -e: use `if note=$(ffcrc_check f); then rc=0; else rc=$?; fi`.
 ffcrc_check() {
     local file="$1" t magic len crc ncrc got
     _ffcrc_size_ok "$file" || { echo "fullflash_crc: $file is not a 16 MiB image" >&2; return 2; }
     t=$(dd if="$file" bs=1 skip="$FFCRC_OFFSET" count="$FFCRC_LEN" 2>/dev/null | od -An -tx1 -v | tr -d ' \n')
     if [ "$t" = "ffffffffffffffffffffffffffffffff" ]; then
-        echo "no CRC trailer (built before V3.1, or a backup of such a flash): the loader checks the kernel checksum only"
+        echo "no CRC trailer (built before V3.1, or a backup of such a flash): a V3.1 loader will refuse the image; sign it with 'lib/fullflash_crc.sh write' if you trust it (older loaders accept it as is)"
         return 1
     fi
     magic=${t:0:8}; len=$((16#${t:8:8})); crc=$((16#${t:16:8})); ncrc=$((16#${t:24:8}))

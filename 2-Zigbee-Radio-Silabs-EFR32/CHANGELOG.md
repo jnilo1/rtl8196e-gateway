@@ -4,6 +4,28 @@ All notable changes to the EFR32 firmware and tooling are documented here.
 
 ---
 
+## [4.6.0] - 2026-09-26
+
+_No EFR32 changes: the firmware images and the container sources are the ones
+shipped with 4.5.2, and `docker-compose-multipan.yml` keeps pulling the
+`multipan-otbr:4.5.2` image tested with that release. The platform side of this
+release (bootloader V3.2, TFTP flashing tools) is in
+`3-Main-SoC-Realtek-RTL8196E/CHANGELOG.md`._
+
+### Container images are rebuilt only when they change
+
+The `cpcd-zigbeed` and `multipan-otbr` workflows used to rebuild and publish their
+image on every release tag. With unchanged sources that was not a no-op: the base
+image and the apt packages are not pinned, so each release published a different,
+untested image and moved `:latest` onto it. A release tag now builds an image only
+if a file its Dockerfile copies changed since the previous release tag; a manual
+dispatch still always builds. 4.6.0 therefore publishes no new image: `:latest`,
+`:cpcd4.5.3-ezsp18` and the `4.5.2` tags stay on the builds tested with 4.5.2.
+Checked against the release history: the rule rebuilds `cpcd-zigbeed` for 4.5.1 and
+4.5.2 and `multipan-otbr` for 4.5.1 only, the releases where their sources changed.
+
+---
+
 ## [4.5.2] - 2026-09-23
 
 ### zigbeed serves Zigbee2MQTT over native TCP — contributed by @mbjd05 (#162)

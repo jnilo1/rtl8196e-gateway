@@ -49,6 +49,9 @@ static int tftpd_is_ready = 0;
 static int rx_kickofftime = 0;
 static unsigned char one_tftp_lock = 0;
 
+/* A transfer whose client has sent nothing for this long is abandoned. */
+#define TFTP_IDLE_JIFFIES 1500 /* 15 s at 100 Hz */
+
 struct nic nic;
 static unsigned char eth_packet[ETH_FRAME_LEN + 4];
 
@@ -1220,6 +1223,36 @@ void kick_tftpd(void)
 
 		tftppacket = (struct tftp_t *)&nic.packet[ETH_HLEN];
 		tftpopcode = tftppacket->opcode;
+		/*
+		 * A transfer tied to a client that has gone silent (a stalled
+		 * or interrupted tftp) would otherwise hold the server forever:
+		 * setTFTP_WRQ() and the ERROR path only accept the port that
+		 * started it, and every tftp run picks a new one.  After
+		 * TFTP_IDLE_JIFFIES without a DATA or ACK, a new request drops
+		 * it and is served as from idle.  A dropped download keeps the
+		 * length of the data it was serving, which is still in RAM; a
+		 * dropped upload is partial and is forgotten.  The request
+		 * being handled is still in nic, which tftp_reset_transfer()
+		 * points back at eth_packet: keep it, or the request that
+		 * triggered the drop would be read from the wrong buffer and
+		 * ignored.
+		 */
+		if ((tftpopcode == htons(TFTP_RRQ) ||
+		     tftpopcode == htons(TFTP_WRQ)) && one_tftp_lock &&
+		    get_timer_jiffies() - rx_kickofftime > TFTP_IDLE_JIFFIES) {
+			unsigned long served =
+				bootState == BOOT_STATE2_TFTP_SERVER_RRQ ?
+					file_length_to_server : 0;
+			char *packet = nic.packet;
+			unsigned int packetlen = nic.packetlen;
+
+			prom_printf("\nTFTP: idle transfer dropped\n");
+			tftp_reset_transfer();
+			nic.packet = packet;
+			nic.packetlen = packetlen;
+			file_length_to_server = served;
+		}
+
 		switch (tftpopcode) {
 		case htons(TFTP_RRQ):
 			if (one_tftp_lock == 0) {
@@ -1228,17 +1261,17 @@ void kick_tftpd(void)
 			}
 			break;
 		case htons(TFTP_WRQ):
-			if (one_tftp_lock == 0) {
+			/*
+			 * A new request, or the peer's own WRQ retransmit before
+			 * block 1.  A WRQ from another port must not restart the
+			 * idle clock: a client retrying every few seconds would
+			 * otherwise keep an abandoned transfer alive forever.
+			 */
+			if (one_tftp_lock == 0 ||
+			    (block_expected == 1 &&
+			     tftp_peer_matches(ntohs(udpheader->src)))) {
 				kick_event = BOOT_EVENT3_TFTP_WRQ;
 				rx_kickofftime = get_timer_jiffies();
-			} else {
-				/* WRQ retransmit or timeout (20s) */
-				if ((block_expected == 1) ||
-				    ((get_timer_jiffies() - rx_kickofftime) >
-				     2000)) {
-					kick_event = BOOT_EVENT3_TFTP_WRQ;
-					rx_kickofftime = get_timer_jiffies();
-				}
 			}
 			break;
 		case htons(TFTP_DATA):

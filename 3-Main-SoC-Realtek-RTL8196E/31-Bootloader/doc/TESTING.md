@@ -419,12 +419,23 @@ Upload images with known signatures and verify:
 ### Malformed packets (V3.1 length checks)
 
 `tests/tftp_probe.py` sends frames whose UDP/IP length fields lie about the
-payload (needs a raw socket, so `sudo`).  After each probe the board must
-still answer `ping`; the script prints PASS/FAIL:
+payload (needs raw sockets, so `sudo`; run it from a real terminal, the
+password prompt needs one).  Type `AUTOBURN 0` on the console first.  After
+each probe the board must still answer `ping`, and the two probes sent
+inside an open upload must get the expected answer: one byte over the block
+is refused with TFTP error 4 and the upload aborted, a UDP length of 11 is
+dropped and the upload then completes.  A normal 4-block upload ends the
+run, and no transfer is left open.  The IP-length probe is sent as a raw
+Ethernet frame, since the kernel rewrites the IP length of a raw IP socket.
 
 ```bash
 sudo ./tests/tftp_probe.py 192.168.1.6
 ```
+
+Bench (Lidl `.88`, flashed V3.2, host on Wi-Fi, 2026-09-26): all six lines
+`board alive` with the expected outcome, `PASS`; the console printed
+`TFTP DATA with bad length 525, aborting`, then the 3-byte and 0x604-byte
+uploads with `Success!`.
 
 ### Oversized upload
 
@@ -432,6 +443,51 @@ With `LOADADDR 80500000`, uploading a file larger than the free RAM above
 it (27 MiB on the Lidl board) must stop with a TFTP "disk full" error on
 the client and `Upload does not fit at ...` on the console, and the board
 must still answer `ping`.
+
+### Abandoned transfer recovery (V3.2)
+
+A transfer belongs to the client that opened it (MAC, IPv4 address, UDP
+port).  A client that goes silent (a stalled or interrupted `tftp`, a
+Ctrl-C) used to leave the server ignoring every other port until a power
+cycle.  Since V3.2 a request that arrives while the transfer has been idle
+for 15 s, with no DATA or ACK, drops it: the console prints
+`TFTP: idle transfer dropped` and the request is served as from idle.  A
+dropped download keeps serving the data still in RAM; a dropped upload is
+partial and is forgotten.
+
+`tests/tftp_idle.py` checks it with raw TFTP over an ordinary UDP socket
+(no root).  It sends one request per second while it waits, so a lost
+packet on a Wi-Fi host costs a second, not the test.  Run it from
+`test.bin` after `AUTOBURN 0`: every upload stays in RAM, nothing is
+written to flash.
+
+```
+<RealTek>AUTOBURN 0
+```
+
+```bash
+./tests/tftp_idle.py 192.168.1.6 upload-stall 50   # client dies after 50 blocks
+./tests/tftp_idle.py 192.168.1.6 upload-stall 0    # client dies right after its WRQ
+./tests/tftp_idle.py 192.168.1.6 live-slow 2 30    # alive, one block every 2 s
+./tests/tftp_idle.py 192.168.1.6 live-slow 10 45   # alive, one block every 10 s
+./tests/tftp_idle.py 192.168.1.6 download-stall    # needs data loaded (last upload)
+./tests/tftp_idle.py 192.168.1.6 peer-retx         # WRQ retransmit before block 1
+```
+
+Each line prints `PASS` or `FAIL`.  In the stall tests the new client stays
+silent for 16 s, then its **first** request must be served: the request
+that makes the loader drop the stale transfer is the one a single-shot
+client such as `tftp` (one WRQ per 5 s) depends on.  A client retrying every
+second would hide a loader that drops the transfer but loses that request.
+
+Bench reference (Lidl `.88`, host on Wi-Fi, 2026-09-26, from `test.bin` and
+again from the flashed V3.2): both stalled uploads answered on the first
+WRQ 16.0 s after the stall, the stalled download on the first RRQ 16.0 s
+after it and re-served in full (0xA00 bytes, as the console reported), the
+live uploads were never taken over by an intruder sending a WRQ every
+0.5 s, and the retransmitting client was served.  `upload-stall 0` is the
+case a WRQ from another port used to keep alive: those WRQs now leave the
+idle clock alone.
 
 ### Post-flash UDP notification test
 

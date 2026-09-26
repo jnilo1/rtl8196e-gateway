@@ -26,6 +26,52 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/multipan-otbr
 
 jobs:
+  changes:
+    name: Decide whether the image changed
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - name: Checkout repository with its tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare the image inputs with the previous release tag
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUTS: >-
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/Dockerfile.multiarch
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/entrypoint.sh
+        run: |
+          # A release tag rebuilds the image only when one of its inputs changed
+          # since the previous release tag. Rebuilding unchanged sources is not a
+          # no-op: the base image and apt packages are not pinned, so it would
+          # publish a different, untested image and move :latest onto it.
+          # Manual dispatches and pull requests always build. INPUTS lists what
+          # the Dockerfile copies from its context; this workflow file is not in
+          # it, so a change to the build settings here needs a manual dispatch.
+          if [ "$EVENT" != push ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)
+          if [ -z "$prev" ]; then
+            echo "No previous release tag: building."
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # INPUTS is a space-separated list of repository paths.
+          # shellcheck disable=SC2086
+          if git diff --quiet "$prev" "$GITHUB_SHA" -- $INPUTS; then
+            echo "Image inputs unchanged since $prev: nothing to build or publish."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image inputs changed since $prev:"
+            # shellcheck disable=SC2086
+            git diff --stat "$prev" "$GITHUB_SHA" -- $INPUTS
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   compose:
     name: Validate Compose
     runs-on: ubuntu-latest
@@ -74,9 +120,10 @@ jobs:
 
   publish:
     name: Publish linux/amd64 + linux/arm64
-    if: github.repository == 'jnilo1/rtl8196e-gateway' && (github.event_name == 'push' || inputs.push_image)
+    # On a release tag, only when the image inputs changed (job `changes`).
+    if: github.repository == 'jnilo1/rtl8196e-gateway' && (github.event_name == 'push' || inputs.push_image) && needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
-    needs: compose
+    needs: [compose, changes]
     permissions:
       contents: read
       packages: write

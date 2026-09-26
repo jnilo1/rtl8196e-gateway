@@ -145,7 +145,6 @@ nav:
 exclude_docs: |
   AGENTS.md
   CLAUDE.md
-  .codex/
   .claude/
   .venv-docs/
   site/

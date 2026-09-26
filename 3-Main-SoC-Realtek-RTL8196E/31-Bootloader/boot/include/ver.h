@@ -10,10 +10,10 @@
 #ifndef _VER_H_
 #define _VER_H_
 
-#define B_VERSION "V3.1"
+#define B_VERSION "V3.2"
 
 #ifndef BOOT_CODE_TIME
-#define BOOT_CODE_TIME "2026.09.11-18:00+0200"
+#define BOOT_CODE_TIME "2026.09.26-09:06+0200"
 #endif
 
 #endif /* _VER_H_ */

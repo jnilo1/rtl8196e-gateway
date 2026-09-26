@@ -12,7 +12,10 @@
 # For older bootloaders (Tuya/V1.2): serial console required. The script
 # guides you through LOADADDR + tftp put + FLW commands.
 #
-# Usage: ./restore_gateway.sh <fullflash.bin> [--boot-ip ADDRESS]
+# Usage: ./restore_gateway.sh [-y] <fullflash.bin> [--boot-ip ADDRESS]
+#
+# -y (or CONFIRM=y) skips the "Proceed?" confirmation. The serial-guided
+# paths still wait for the operator, so they need an interactive terminal.
 #
 # J. Nilo - March 2026
 
@@ -24,27 +27,32 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${SCRIPT_DIR}/lib/gwconf.sh"
 # CRC trailer check before sending — see lib/fullflash_crc.sh.
 . "${SCRIPT_DIR}/lib/fullflash_crc.sh"
+# TFTP WRQ probe that confirms a bootloader — see lib/flash_tftp.sh.
+. "${SCRIPT_DIR}/lib/flash_tftp.sh"
 # Bootloader-mode address: flag > BOOT_IP env > gateway.env > the bootloader's
 # compiled default. NOT derived from this host's LAN: the gateway is already at a
 # bootloader prompt and cannot be told to move (lib/gwconf.sh, gwconf_cold_boot_ip).
 BOOT_IP="${BOOT_IP:-$(gwconf_cold_boot_ip)}"
 IMAGE=""
+CONFIRM="${CONFIRM:-}"
 
 # --- argument parsing --------------------------------------------------------
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --boot-ip|--ip) shift; BOOT_IP="$1" ;;
+        -y|--yes) CONFIRM="y" ;;
         --help|-h)
-            echo "Usage: $0 <fullflash.bin> [--boot-ip ADDRESS]"
+            echo "Usage: $0 [-y] <fullflash.bin> [--boot-ip ADDRESS]"
             echo ""
             echo "Restores a full flash backup to the gateway."
             echo "The gateway must be in bootloader mode (<RealTek> prompt)."
             echo ""
             echo "Options:"
             echo "  --boot-ip ADDR   Gateway IP in bootloader mode (default: ${BOOT_IP})"
+            echo "  -y, --yes        Skip the confirmation prompt"
             echo ""
-            echo "Environment variables: BOOT_IP"
+            echo "Environment variables: BOOT_IP, CONFIRM (y = same as -y)"
             exit 0
             ;;
         -*) echo "Unknown option: $1. Use --help for usage."; exit 1 ;;
@@ -61,7 +69,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$IMAGE" ]; then
-    echo "Usage: $0 <fullflash.bin> [--boot-ip ADDRESS]"
+    echo "Usage: $0 [-y] <fullflash.bin> [--boot-ip ADDRESS]"
     echo "Error: no image file specified." >&2
     exit 1
 fi
@@ -123,6 +131,17 @@ if ! echo "$nei" | grep -Eqi 'lladdr [0-9a-f]{2}(:[0-9a-f]{2}){5}'; then
     exit 1
 fi
 
+# A MAC in the neighbour table does not prove the bootloader is there: the
+# `ip neigh del` above needs root and fails silently without it, so an entry
+# left from an earlier bootloader session still shows a MAC for a while after
+# the gateway has gone back to Linux. Require what the restore needs, a TFTP
+# server that ACKs a WRQ (same test as flash_install_rtl8196e.sh).
+if ! probe_tftp_wrq "$BOOT_IP"; then
+    echo "Error: no TFTP server at ${BOOT_IP}: the gateway is not in bootloader mode." >&2
+    echo "Make sure the gateway is in download mode (<RealTek> prompt)." >&2
+    exit 1
+fi
+
 # --- detect bootloader type --------------------------------------------------
 # Custom (V1.2/V2) responds to ping; Tuya does not.
 
@@ -143,7 +162,9 @@ echo "MD5:         $(md5sum "$IMAGE" | awk '{print $1}')"
 # now.  A mismatch means the file changed after its trailer was written,
 # foreign data means the tail is neither blank nor a trailer: take a fresh
 # backup, or `lib/fullflash_crc.sh write FILE` if you trust the file.
-# (if/else, not $?: the script runs under set -e and 1 = "no trailer" is fine.)
+# No trailer (1) is still sent: loaders older than V3.1 accept it, and the
+# host cannot tell the loader version; the message tells a V3.1 user to sign.
+# (if/else, not $?: the script runs under set -e.)
 if ff_note=$(ffcrc_check "$IMAGE"); then ff_rc=0; else ff_rc=$?; fi
 echo "CRC trailer: $ff_note"
 if [ "$ff_rc" -eq 2 ] || [ "$ff_rc" -eq 3 ]; then
@@ -156,8 +177,10 @@ echo ""
 echo "WARNING: This will overwrite the ENTIRE flash chip (16 MiB)."
 echo "All data on the gateway will be replaced."
 echo ""
-read -r -p "Proceed? [y/N] " confirm
-if [[ ! "$confirm" =~ ^[yY]$ ]]; then echo "Aborted."; exit 0; fi
+if [ "$CONFIRM" != "y" ]; then
+    read -r -p "Proceed? [y/N] " confirm
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then echo "Aborted."; exit 0; fi
+fi
 
 IMAGE_DIR="$(cd "$(dirname "$IMAGE")" && pwd)"
 IMAGE_NAME="$(basename "$IMAGE")"
@@ -176,7 +199,7 @@ if [ "$BOOTLOADER_TYPE" = "custom" ]; then
     echo ""
     echo "Uploading image via TFTP..."
     cd "$IMAGE_DIR"
-    out=$(timeout 300 tftp -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
+    out=$(timeout 300 tftp "${TFTP_PIN[@]}" -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
     cd "$SCRIPT_DIR"
 
     if check_tftp_error "$out"; then
@@ -223,7 +246,7 @@ if [ "$BOOTLOADER_TYPE" = "custom" ]; then
         echo ""
         echo "Now upload the image again:"
         cd "$IMAGE_DIR"
-        out=$(timeout 300 tftp -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
+        out=$(timeout 300 tftp "${TFTP_PIN[@]}" -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
         cd "$SCRIPT_DIR"
         if check_tftp_error "$out"; then
             echo "Error: TFTP transfer failed: $out" >&2
@@ -261,7 +284,7 @@ else
     echo ""
     echo "Uploading image via TFTP..."
     cd "$IMAGE_DIR"
-    out=$(timeout 300 tftp -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
+    out=$(timeout 300 tftp "${TFTP_PIN[@]}" -m binary "$BOOT_IP" -c put "$IMAGE_NAME" 2>&1) || true
     cd "$SCRIPT_DIR"
 
     if check_tftp_error "$out"; then

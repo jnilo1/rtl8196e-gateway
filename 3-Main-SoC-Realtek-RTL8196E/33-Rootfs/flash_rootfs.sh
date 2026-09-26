@@ -79,6 +79,13 @@ if [ "${BOOTLOADER_CONFIRMED:-}" != "1" ]; then
         echo "Error: ${TARGET_IP} unreachable — check cable and that device is in download mode." >&2
         exit 1
     fi
+    # A MAC in the neighbour table does not prove the bootloader is there (a
+    # stale entry, or another host on the address): require a TFTP server
+    # that ACKs a WRQ. Probed before the flash-result listener starts.
+    if ! probe_tftp_wrq "$TARGET_IP"; then
+        echo "Error: no TFTP server at ${TARGET_IP}: the gateway is not in bootloader mode." >&2
+        exit 1
+    fi
 fi
 
 echo ""
@@ -96,17 +103,19 @@ fi
 NOTIFY_PORT=9999
 NOTIFY_TMO=60
 
-notify_file=$(mktemp)
-(timeout "$NOTIFY_TMO" nc -u -l -p "$NOTIFY_PORT" > "$notify_file" 2>/dev/null) &
-nc_pid=$!
-sleep 0.2
-
 cd "$SCRIPT_DIR"
 if ! tftp_put_safe "$TARGET_IP" rootfs.bin 3 30 >/dev/null; then
-    kill "$nc_pid" 2>/dev/null; wait "$nc_pid" 2>/dev/null; rm -f "$notify_file"
     echo "Error: transfer failed after retries." >&2
     exit 1
 fi
+# Listen for the flash result only now: every TFTP upload the bootloader
+# completes, including tftp_put_safe's 1-byte probe between retries, makes it
+# send OK or FAIL on UDP:9999, so a listener started before the upload could
+# read a probe's FAIL as the result. The bootloader sends the result only
+# after erasing, programming and verifying flash, well after nc is listening.
+notify_file=$(mktemp)
+(timeout "$NOTIFY_TMO" nc -u -l -p "$NOTIFY_PORT" > "$notify_file" 2>/dev/null) &
+nc_pid=$!
 echo "Uploaded. Waiting for flash write..."
 while kill -0 "$nc_pid" 2>/dev/null; do
     [ -s "$notify_file" ] && { kill "$nc_pid" 2>/dev/null; break; }

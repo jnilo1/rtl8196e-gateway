@@ -2,7 +2,9 @@ name: Build cpcd-zigbeed Docker image
 
 # Publish ONLY when a release tag vX.Y.Z is pushed (or via manual dispatch).
 # Pushes to main do NOT build/publish: main is a pre-release staging line and
-# must not clobber the public ghcr :latest before a release is cut.
+# must not clobber the public ghcr :latest before a release is cut. A release
+# tag builds only if the image inputs changed since the previous release tag
+# (job `changes`), so a release that leaves the image alone publishes nothing.
 on:
   push:
     tags: ['v*']
@@ -19,14 +21,66 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/cpcd-zigbeed
 
 jobs:
+  changes:
+    name: Decide whether the image changed
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - name: Checkout repository with its tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare the image inputs with the previous release tag
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUTS: >-
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/.dockerignore
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/cpcd/tcp-bus.patch
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed/serial_adapter_posix.c
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed/serial_adapter_posix.h
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed/install_serial_adapter.sh
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/zigbeed/THIRD_PARTY_NOTICES
+        run: |
+          # A release tag rebuilds the image only when one of its inputs changed
+          # since the previous release tag. Rebuilding unchanged sources is not a
+          # no-op: the base image and apt packages are not pinned, so it would
+          # publish a different, untested image and move :latest onto it.
+          # Manual dispatches and pull requests always build. INPUTS lists what
+          # the Dockerfile copies from its context; this workflow file is not in
+          # it, so a change to the build settings here needs a manual dispatch.
+          if [ "$EVENT" != push ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)
+          if [ -z "$prev" ]; then
+            echo "No previous release tag: building."
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # INPUTS is a space-separated list of repository paths.
+          # shellcheck disable=SC2086
+          if git diff --quiet "$prev" "$GITHUB_SHA" -- $INPUTS; then
+            echo "Image inputs unchanged since $prev: nothing to build or publish."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image inputs changed since $prev:"
+            # shellcheck disable=SC2086
+            git diff --stat "$prev" "$GITHUB_SHA" -- $INPUTS
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: changes
     runs-on: ubuntu-latest
     # The ghcr package jnilo1/cpcd-zigbeed is owned by the PUBLIC repo, so the
     # image must be built and pushed from there — the private repo's
     # GITHUB_TOKEN has no write_package on it. The release tag is pushed to
     # both remotes; this guard skips the private repo's run so it does not fail
     # on the denied push (and avoids a duplicate build).
-    if: github.repository == 'jnilo1/rtl8196e-gateway'
+    if: github.repository == 'jnilo1/rtl8196e-gateway' && needs.changes.outputs.build == 'true'
     permissions:
       contents: read
       packages: write

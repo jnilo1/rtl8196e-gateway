@@ -56,6 +56,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Host-side gateway address resolution — see lib/gwconf.sh.
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/../lib/gwconf.sh"
+# TFTP WRQ probe that confirms the bootloader (probe_tftp_wrq).
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/../lib/flash_tftp.sh"
 
 # --- argument parsing --------------------------------------------------------
 
@@ -205,22 +208,6 @@ elif [ "$COMPONENT" = "bootloader" ]; then
 fi
 
 # --- helpers ------------------------------------------------------------------
-
-# Check if bootloader is reachable (ARP resolves on BOOT_IP)
-bootloader_reachable() {
-    local iface
-    iface="$(ip route get "$BOOT_IP" 2>/dev/null \
-        | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' || true)"
-    [ -z "$iface" ] && return 1
-
-    ip neigh del "$BOOT_IP" dev "$iface" 2>/dev/null || true
-    bash -c "echo -n X >/dev/udp/$BOOT_IP/69" 2>/dev/null || true
-    sleep 0.3
-
-    local nei
-    nei="$(ip neigh show "$BOOT_IP" dev "$iface" 2>/dev/null || true)"
-    echo "$nei" | grep -Eqi 'lladdr [0-9a-f]{2}(:[0-9a-f]{2}){5}'
-}
 
 # check_board_match <board> — refuse to flash a kernel or a bootloader built
 # for a different board than the one running. What identifies a board — the
@@ -433,7 +420,11 @@ while [ $tries -lt 15 ]; do
     tries=$((tries + 1))
 done
 
-# Phase 2: wait for bootloader ARP
+# Phase 2: wait for the bootloader. A MAC in the neighbour table is not
+# enough: `ip neigh del` needs root and fails silently without it, so an entry
+# left by an earlier bootloader session shows a MAC while the gateway is still
+# rebooting. Require a TFTP server that ACKs a WRQ, as flash_install does; the
+# flash script run below trusts this check (BOOTLOADER_CONFIRMED).
 echo "Waiting for bootloader at ${BOOT_IP}..."
 tries=0
 while [ $tries -lt 30 ]; do
@@ -441,7 +432,8 @@ while [ $tries -lt 30 ]; do
     bash -c "echo -n X >/dev/udp/$BOOT_IP/69" 2>/dev/null || true
     sleep 1
     nei="$(ip neigh show "$BOOT_IP" dev "$IFACE" 2>/dev/null || true)"
-    if echo "$nei" | grep -Eqi 'lladdr [0-9a-f]{2}(:[0-9a-f]{2}){5}'; then
+    if echo "$nei" | grep -Eqi 'lladdr [0-9a-f]{2}(:[0-9a-f]{2}){5}' \
+       && probe_tftp_wrq "$BOOT_IP"; then
         break
     fi
     tries=$((tries + 1))

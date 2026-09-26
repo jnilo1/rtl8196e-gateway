@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-06-12 |
 | **Driver version** | 1.4 |
-| **Active release** | v4.5.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.5.0`) |
+| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
 
 This document explains what the driver does, why it exists, and the key
 choices that shaped the stabilised code in

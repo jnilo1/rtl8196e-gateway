@@ -6,6 +6,89 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.6.0] - 2026-09-26
+
+### Bootloader — V3.2: an interrupted TFTP transfer no longer locks the loader
+
+Since V3.1 a TFTP transfer belongs to the client that opened it, down to its UDP
+port, and the loader had no idle timeout. A client that went silent in the middle of
+a transfer (a stalled `tftp`, a Ctrl-C, a script's time limit, a flaky link) left the
+loader answering `ping` but ignoring every new request, since each `tftp` run uses a
+new port: only a power cycle brought TFTP back. V3.2 drops a transfer that has been
+silent for 15 s as soon as a new request arrives, prints `TFTP: idle transfer dropped`
+on the console and serves the request normally. A dropped download keeps serving the
+data still in RAM (a `FLR` read does not have to be repeated); a dropped upload is
+partial and is discarded. A transfer that is slow but alive is never taken over, and a
+WRQ from another port no longer restarts the idle clock, which used to keep a client
+that died right after its request locked in for as long as others kept retrying.
+
+Validated on the Lidl bench box with the host on Wi-Fi, first from RAM (`test.bin`,
+`AUTOBURN 0`, nothing written) and then with V3.2 flashed, using the new
+`tests/tftp_idle.py`: stalled uploads (after 50 blocks and right after the WRQ) and a
+stalled download released on the first new request, 16 s after the stall, the download
+re-served in full, live uploads at one block every 2 s and every 10 s never taken over.
+With the flashed V3.2, a kernel upload from another `tftp` killed after 1 s was followed
+17 s later by `flash_kernel.sh`, which flashed the kernel with no power cycle; the V3.2
+image itself was written through `flash_remote.sh bootloader` and `mtd0` read back
+identical. Both boards' `boot.bin` images are rebuilt reproducibly.
+
+### Flash tooling — no more false "done" or false "failed" from the TFTP scripts
+
+Several faults on the host side of TFTP flashing could report a flash that never
+happened as a success, or a good flash as a failure. Each was reproduced on the Lidl
+bench before being fixed:
+
+- **A bootloader is confirmed by its TFTP server, not by ARP.** `restore_gateway.sh`, the
+  standalone `flash_{bootloader,kernel,rootfs,userdata}.sh` and the wait that follows
+  `boothold` in `flash_remote.sh` took a MAC address in the neighbour table as proof that
+  the loader was up. Without root the scripts cannot clear that table, so an entry left
+  by an earlier bootloader session, or another machine holding the address, passed the
+  check: a standalone flash script then waited a minute and ended with `Done.` and exit
+  status 0 although nothing had been sent. They now require the loader's TFTP server to
+  answer a write request, as `flash_install_rtl8196e.sh` already did.
+- **The flash result is read after the upload.** The loader answers every upload it
+  completes with `OK` or `FAIL` on UDP:9999, including the 1-byte probe sent between
+  attempts. The partition scripts listened from before the upload and could take a
+  probe's `FAIL` for the flash result; they now start listening once the upload is done,
+  like the installer.
+- **A `tftp` stopped by a time limit is a failed attempt.** The retry helper judged an
+  attempt by the absence of error words in the output of `tftp`, which prints nothing
+  when killed by its time limit; the 15 s limit of `flash_bootloader.sh` is shorter than
+  the 25 s after which `tftp` gives up on its own. Such an attempt is now reported as
+  `killed after …s` and handled as a failure.
+- **Every upload leaves from one fixed UDP port** (`TFTP_SRC_PORT`, 50069 by default):
+  the flash scripts, the installer, `restore_gateway.sh` and `create_fullflash.sh`. A
+  V3.1 loader stays locked to the port of an interrupted upload until a power cycle (see
+  the V3.2 entry above); from the same port the next attempt restarts that transfer
+  instead. With V3.2 it still saves a retry when a lost packet leaves a transfer waiting
+  for its first block, which happens from a host on Wi-Fi.
+- On a failed upload the partition scripts print their error and remove their temporary
+  file instead of exiting with status 143.
+
+`restore_gateway.sh` also takes `-y` (or `CONFIRM=y`) to skip its confirmation, as the
+installer does; the serial-guided paths still wait for the operator. `lib/fullflash_crc.sh`
+now says that a V3.1 loader refuses a full image without a CRC trailer and how to sign
+it; its comments said such images were still accepted.
+
+Bench (Lidl `.88`, 2026-09-25 and 26): the standalone flash scripts, pointed at a host
+with no TFTP server and at a stale boot-address entry, exit 1 within 3–4 s with nothing
+sent; `flash_remote.sh kernel` and `flash_kernel.sh` after `boothold` flash with the
+loader's `OK`; a probe followed by an upload read `FAILOK` with the old listener order and
+`OK` with the new one; after an upload interrupted from the fixed port, a V3.1 loader
+answered again 24 s later without a power cycle; `restore_gateway.sh -y` wrote a full
+image with standard input on `/dev/null`.
+
+### Docs — swapping the coordinator gateway
+
+`docs/troubleshooting.md` gains "Zigbee misbehaves after changing the coordinator
+gateway". A Zigbee2MQTT backup does not carry the radio's IEEE address, and some devices
+reach the coordinator by that address: after a gateway swap the network turns sluggish, a
+remote press arrives several times and a clock never gets the time. The section gives the
+log signature (same ZCL transaction number, increasing APS counters), where Zigbee2MQTT
+shows the coordinator address, and the Zigbee2MQTT guide to copy it to the new radio.
+
+---
+
 ## [4.5.2] - 2026-09-23
 
 _No RTL8196E platform artifact changes. This radio/host-stack-only release keeps

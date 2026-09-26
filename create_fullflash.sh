@@ -48,6 +48,9 @@ RTL_DIR="${SCRIPT_DIR}/3-Main-SoC-Realtek-RTL8196E"
 . "${SCRIPT_DIR}/lib/gwconf.sh"
 # CRC trailer of the raw image, checked by the bootloader — see lib/fullflash_crc.sh.
 . "${SCRIPT_DIR}/lib/fullflash_crc.sh"
+# Fixed TFTP source port (TFTP_PIN) — see lib/flash_tftp.sh.
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/lib/flash_tftp.sh"
 
 # BOARD (default lidl) and KERNEL (default 6.18) select the pre-built kernel
 # image; a Lidl user who sets neither gets the historical kernel-6.18.img.
@@ -359,7 +362,7 @@ if [[ ! "$r" =~ ^[yY]$ ]]; then echo "Aborted."; exit 0; fi
 echo ""
 echo "Uploading fullflash.bin (16 MiB) to ${BOOT_IP}..."
 cd "$SCRIPT_DIR"
-out=$(timeout 300 tftp -m binary "$BOOT_IP" -c put fullflash.bin 2>&1) || true
+out=$(timeout 300 tftp "${TFTP_PIN[@]}" -m binary "$BOOT_IP" -c put fullflash.bin 2>&1) || true
 
 if echo "$out" | grep -qiE "error|timeout|timed out|refused|failed|unknown host|access denied|disk full|illegal|not connected|unknown transfer"; then
     echo "Error: TFTP transfer failed: $out" >&2

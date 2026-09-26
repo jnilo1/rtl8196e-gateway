@@ -21,6 +21,7 @@ two processors and two distinct failure domains:
 | First boot loops after a full flash | [Boot loop after the first full flash](#boot-loop-after-the-first-full-flash) |
 | Gateway boots but SSH is unavailable | [SSH unavailable after boot](#ssh-unavailable-after-boot) |
 | Zigbee2MQTT/ZHA cannot open port 8888 | [Radio client cannot connect](#radio-client-cannot-connect) |
+| Zigbee slow or remotes repeat after switching gateways | [Zigbee misbehaves after changing the coordinator gateway](#zigbee-misbehaves-after-changing-the-coordinator-gateway) |
 | Zigbee/Thread stops, but SSH still works | [EFR32 radio unresponsive](#the-efr32-radio-is-unresponsive) |
 | Radio flash fails on a never-flashed Sengled G4 | [EFR32 flash fails](#efr32-flash-fails) |
 | The entire gateway vanishes from the LAN | [Gateway disappears from the network](#the-gateway-disappears-from-the-network) |
@@ -267,6 +268,22 @@ connection; Linux gets the physical baud from `radio.conf`.
 
 If `BRIDGE_BIND=127.0.0.1` is set, remote connections are intentionally refused.
 Use the configured SSH tunnel or restore a trusted-LAN bind.
+
+### Zigbee misbehaves after changing the coordinator gateway
+
+A Zigbee coordinator is not stateless. Zigbee2MQTT's backup restores the network settings and keys onto a new radio, but not the radio's own IEEE address, and some devices address the coordinator by that address. After replacing the gateway, or when alternating between two gateways on the same network, those devices keep talking to a coordinator that is no longer there.
+
+Typical symptoms, while SSH, the bridge `stats` and the UART counters stay clean:
+
+- the whole network feels sluggish;
+- a single press on a remote reaches Zigbee2MQTT several times;
+- a device that asks the coordinator for the time never gets it.
+
+In a Zigbee2MQTT debug log, the repeated messages carry the same ZCL transaction number but increasing APS counters: the device sends the command again because the coordinator's answer never reached it.
+
+Compare **Settings → About → Coordinator IEEE Address** in Zigbee2MQTT with each gateway. If they differ, copy the previous address to the new radio as described in the Zigbee2MQTT guide [Copying the IEEE address of an adapter](https://www.zigbee2mqtt.io/guide/adapters/flashing/copy_ieee_addr.html), and read its warning first: on some firmware the address can be written only once. `universal-silabs-flasher` reaches the EFR32 through the gateway at `socket://<gateway-ip>:8888`, the path `flash_efr32.sh` uses; stop Zigbee2MQTT first, since the bridge accepts a single client.
+
+Once two radios carry the same IEEE address, never power both on the same network at the same time.
 
 ### The EFR32 radio is unresponsive
 
