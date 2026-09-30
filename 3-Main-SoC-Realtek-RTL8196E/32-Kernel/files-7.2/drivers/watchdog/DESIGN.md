@@ -27,7 +27,7 @@ non-`0xa5` enable byte runs the counter; `0xa5` stops it. The driver uses:
 
 ```
 start/ping:  ENABLE_PATTERN | WDTCLR | maximum selector
-stop:        DISABLE_PATTERN | WDTCLR
+stop:        DISABLE_PATTERN
 restart/panic recovery: DISABLE_PATTERN | WDTCLR; then 0
 ```
 
@@ -60,16 +60,19 @@ printing.
 
 ## Device-tree contract
 
-`rtl8196e.dts` reserves two independent no-map pages:
+`rtl8196e.dts` reserves two independent no-map pages; the Sengled G4 DTS
+(`rtl8196e-sengled-e39-g8c.dts`, which includes `rtl8196e.dts`) relocates only
+the bootloader handoff page:
 
-| Node | Address | Owner |
-|---|---:|---|
-| `watchdog-crash@1ffd000` | `0x01ffd000` | watchdog record v9 |
-| `boothold@1ffe000` | `0x01ffe000` | bootloader handoff |
+| Node | Lidl (`rtl8196e.dts`) | Sengled G4 | Owner |
+|---|---:|---:|---|
+| `watchdog-crash` | `0x01ffd000` | `0x01ffd000` (inherited) | watchdog record v9 |
+| `boothold` | `0x01ffe000` | `0x03ffe000` | bootloader handoff |
 
-The watchdog node references only `watchdog-crash`. A board port must move
-both the node and the address used by any board-specific recovery tooling; it
-must never reuse `boothold` for the watchdog record.
+The watchdog node references only `watchdog-crash`. A board whose bootloader
+uses a different handoff address deletes the `boothold` node and re-declares it,
+with its `boothold:` label, at that address, as the G4 port does; the
+bootloader constant must match. The watchdog record never reuses `boothold`.
 
 ## Validation
 

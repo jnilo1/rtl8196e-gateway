@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Document date** | 2026-06-11 (updated 2026-06-12: eth v2.7 closes GPIO-007; v1.2 generic-chip conversion) |
-| **Driver version** | 1.2 (`DRV_VERSION` in `gpio-rtl819x.c`) |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`); v1.1/v1.2 unreleased |
+| **Driver version** | 1.3 (`DRV_VERSION` in `gpio-rtl819x.c`) |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 Architecture reference for the SoC GPIO bank driver. Findings and audit
 history live in `AUDIT.md` (this directory).
@@ -36,7 +36,7 @@ complexity sits:
 | Register | Fields relevant here | Writers (current kernel) |
 |---|---|---|
 | `PIN_MUX_SEL` (syscon 0x40) | UART1 TX/RX routing (bits 1,3,6), MII | `8250_rtl819x` (probe), `rtl8196e-eth` (`hw_init`) |
-| `PIN_MUX_SEL_2` (syscon 0x44) | B2–B6 pad functions, 2-bit fields: `0b11` = GPIO, else LED_PORTx/peripheral (datasheet Table 36) | **this driver** (on `request()` of offsets 10–14), `rtl8196e-eth` v2.8 (`hw_init`: named-in-`gpio-line-names` → `0b11`, listed-in-`realtek,led-pads` → `0b00`, neither → `0b11` Hi-Z — the two writers agree by construction since GPIO-007 closed) |
+| `PIN_MUX_SEL_2` (syscon 0x44) | B2–B6 pad functions, 2-bit fields: `0b11` = GPIO, else LED_PORTx/peripheral (datasheet Table 36) | **this driver** (on `request()` of offsets 10–14), `rtl8196e-eth` (`hw_init`, once at probe since v2.11/ETH-S03; three-state rule since v2.8: named-in-`gpio-line-names` → `0b11`, listed-in-`realtek,led-pads` → `0b00`, neither → `0b11` Hi-Z — the two writers agree by construction since GPIO-007 closed); `rtl8196e-eth` v2.24 `led_mode` store at runtime (only the `lan-led-gpios` pad's field: `0b11` for OFF, `0b00` for BRIGHT/DIM) |
 
 All kernel writers go through the same `syscon` regmap, so individual
 RMWs are atomic; what does **not** exist is an ownership model — the
@@ -49,6 +49,7 @@ pad function from `gpio-line-names`/`realtek,led-pads` on this node).
 ```
  consumers:  leds-gpio-pwm        uart-bridge (gpiod,        s40button v2
              (status-led, B3)     open-drain nRST, B4)       (cdev poll, "reset-button")
+             + rtl8196e-eth v2.24 (gpiod "lan-led", LAN LED pad; led_mode remuxes 0x44)
                   │                      │                         │
                   ▼                      ▼                         ▼
             ┌──────────────────── gpiolib core ───────────────────────┐
@@ -99,7 +100,8 @@ pad function from `gpio-line-names`/`realtek,led-pads` on this node).
 - **Permissive validity** (GPIO-005, deliberate): hardwired pads
   (the ASIC-driven LAN-LED pad — B6 on the Lidl, B2 on the Sengled G4)
   are not masked out, only left unnamed in the DT so the supported
-  lookup path cannot reach them.
+  lookup path cannot reach them (the one intended claim is eth v2.24's
+  own `lan-led-gpios` phandle).
 
 ### Open-drain without open-drain hardware
 
@@ -122,7 +124,7 @@ value-first variant — see invariant 3).
 |---|---|---|---|---|
 | 9 | B1 | `reset-button` | `s40button` v2 (cdev poll) | none (not shared) |
 | 10 | B2 | *(unnamed on Lidl, not in `led-pads` → `0b11` Hi-Z)* | G4: port-0 LAN LED (`led-pads = <10>` in its DTS) | `0x44[1:0]` — per `gpio-line-names`/`realtek,led-pads` |
-| 11 | B3 | `status-led` | `leds-gpio-pwm` | `0x44[4:3]` — `0b11` on request *and* re-asserted by eth at every open (named) |
+| 11 | B3 | `status-led` | `leds-gpio-pwm` | `0x44[4:3]` — `0b11` on request *and* set by eth `hw_init` at probe (named) |
 | 12 | B4 | `efr32-nrst` | `rtl8196e-uart-bridge` (gpiod, OD, active-low) | `0x44[7:6]` — `0b11` from boot via eth v2.7 (named): nRST floats high through the EFR32 pull-up before any claim; GPIO-007 closed |
 | 13/14 | B5/B6 | B5 *(unnamed → `0b11` Hi-Z)*; B6 in `realtek,led-pads` → `0b00` = **LAN LED** (LED_PORT4, port 4 — #126: first shipped as B2, the dead LED was caught by eye) | G4: B5 = `blmode`, B6 = `reset-button` (named → `0b11`; its LAN LED is B2) | `0x44[10:9]`/`[13:12]` — per `gpio-line-names`/`realtek,led-pads` |
 
@@ -150,8 +152,9 @@ value-first variant — see invariant 3).
 | `&gpio0` board override + `gpio-line-names` | board DTS | enables the bank, names the wired lines |
 | sysc syscon node (`0x0 0x1000`) | `rtl819x.dtsi` | covers 0x44 (unlike the 0x3100 timer block — that is why this driver *can* use regmap while the watchdog cannot) |
 | `GPIO_CDEV=y` (v1 off), `GPIO_SYSFS_LEGACY` off | config | userspace surface = modern cdev only |
-| `rtl8196e-eth` `hw_init` v2.7 | `drivers/net/ethernet/` | co-writer of 0x44, driven by this node's `gpio-line-names` (GPIO-007 closed) |
-| Consumers | `leds-gpio-pwm`, `rtl8196e-uart-bridge`, `s40button` (userdata) | see §3 |
+| `rtl8196e-eth` `hw_init` (at probe since v2.11) | `drivers/net/ethernet/` | co-writer of 0x44, driven by this node's `gpio-line-names`/`realtek,led-pads` (GPIO-007 closed) |
+| `rtl8196e-eth` v2.24 `lan-led-gpios` | `drivers/net/ethernet/` + board DTS | gpiolib consumer of the LAN LED pad (Lidl B6, G4 B2); its `led_mode` store rewrites that pad's 0x44 field at runtime |
+| Consumers | `leds-gpio-pwm`, `rtl8196e-uart-bridge`, `rtl8196e-eth` (`lan-led-gpios`), `s40button` (userdata) | see §3 |
 
 ## 6. Invariants (do not break)
 
@@ -160,6 +163,9 @@ value-first variant — see invariant 3).
    respect field ownership: a pad named in `gpio-line-names` belongs to
    a GPIO consumer and its field must read `0b11` (since eth v2.7 both
    writers derive this from the DT — GPIO-007 closed; keep it that way).
+   The one runtime writer is eth v2.24 `led_mode`, confined to the field of
+   the pad its `lan-led-gpios` names (a `realtek,led-pads` pad, never one
+   in `gpio-line-names`).
 2. **Request-time muxing is the portability mechanism.** Do not move the
    B2–B6 mux to probe: boards differ in which shared pads they use, and
    probe-time muxing would steal pads from peripherals on boards that

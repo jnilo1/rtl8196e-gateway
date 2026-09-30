@@ -883,7 +883,7 @@ bool rtl8196e_ring_tx_done_stuck(struct rtl8196e_ring *ring, u32 *idx)
  * @rtl8196e_kick_threshold submits, except on cold-start (was_empty),
  * which always kicks immediately so the ASIC TX DMA engine wakes up.
  *
- * Profiled cost on RLX4181 @ 380 MHz: a single pulse takes ~1.44 µs
+ * Profiled cost on RLX4181 @ 400 MHz: a single pulse takes ~1.44 µs
  * (3 register writes + 3 posting reads on the slow MMIO bus).
  * Coalescing 4 packets into 1 kick recovers ~4.3 µs of bus time per
  * batch.  Drained at the end of every NAPI poll so sub-threshold

@@ -21,9 +21,60 @@ because its PCB and debug connector are different.
 
 ## Open the case
 
-The case has no screws. Eight plastic clips are distributed around the edges.
-Work gradually around the perimeter with a non-conductive opening tool rather
-than forcing one corner. Remove the PCB only after power is disconnected.
+The case has no screws and no fasteners hidden under the label. It is a
+snap-fit shell held by **eight plastic clips** around the edges, and the seam
+is additionally **bonded with adhesive** along the perimeter. Because of that
+glue, the halves will not separate by clip pressure alone, and forcing a single
+corner cracks the plastic or snaps a clip. The reliable, non-destructive
+approach is to soften the adhesive first and release the clips gradually all the
+way around.
+
+<p align="center">
+  <img src="./media/case-open-halves.jpg" alt="The gateway opened like a book: the left shell holds the PCB and carries the Ethernet and micro-USB cutouts on one edge; the right cover is plain with two keyhole wall-mounts and internal support posts" width="75%">
+</p>
+
+The PCB stays in the shell that carries the Ethernet and micro-USB cutouts (left
+above). The plain cover with the two keyhole wall-mounts (right above) is the
+half that lifts off.
+
+### Tools
+
+- One or two thin, **non-conductive** opening picks — guitar picks, a plastic
+  spudger, or purpose-made phone-opening picks. Avoid metal blades: they mar the
+  shell and can slip onto the PCB.
+- Isopropyl alcohol (IPA, 90 % or higher) to weaken the seam adhesive.
+- Optional: a hair dryer or other gentle, even heat source (roughly hand-hot).
+  Do **not** use a heat gun at full power.
+
+### Procedure
+
+1. **Disconnect power.** Never pry a powered board.
+2. Locate the seam between the two shell halves. Start on an edge away from the
+   Ethernet and power connectors — the opposite edge works well — and pull the
+   halves straight apart rather than twisting them.
+3. Soften the seam: warm it evenly for a minute or two, or run a thin bead of
+   IPA along it and let it wick in for a moment. Heat also makes the plastic
+   slightly more forgiving. Do not overheat — excess heat deforms the case and
+   can damage components.
+4. Insert a pick into the seam at the starting point and slide it a short way
+   until a clip releases. Leave that pick in place to hold the gap open.
+5. With a second pick, walk around the perimeter releasing the clips one at a
+   time, re-applying IPA or warmth as needed. Move steadily around all four
+   sides instead of levering hard at one spot.
+6. When the clips are free and the adhesive has let go, lift the halves apart
+   evenly. Some adhesive residue on the mating edges is normal and does not
+   affect reassembly.
+7. Remove the PCB only if you need to reach J1, and only with power
+   disconnected. Handle it by the edges and keep the pick tips clear of the
+   antenna and the TYZS4 module.
+
+### Reassembly
+
+The clips re-latch on their own, and the residual adhesive is usually enough to
+hold the seam closed — press around the perimeter until every clip clicks. A
+thin line of fresh adhesive along the seam restores the original sealed feel if
+you want it, but leave the case easy to reopen (and J1 accessible) if you expect
+to reflash later.
 
 ## PCB overview and J1 location
 
@@ -65,6 +116,9 @@ Gateway normal power supply    (adapter VCC not connected)
 
 TX and RX are intentionally crossed. The UART adapter is a signal interface,
 not the gateway power source.
+
+To see how to solder the male pin header into J1 and wire the adapter with
+Dupont cables, watch the [step-by-step animation](https://jnilo1.github.io/rtl8196e-gateway/0-Hardware/media/j1-serial-hookup.html).
 
 ## RTL8196E serial console settings
 

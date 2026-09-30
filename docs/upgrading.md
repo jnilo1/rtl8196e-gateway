@@ -66,7 +66,7 @@ From the repository root, install the small image-build and flash tool set:
 
 ```bash
 sudo apt install fakeroot gcc mtd-utils squashfs-tools tftp-hpa \
-  netcat-openbsd iproute2 iputils-ping openssh-client
+  netcat-openbsd iproute2 iputils-ping openssh-client patch
 ```
 
 The full cross-compilation environment is not needed because pre-built

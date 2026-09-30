@@ -174,7 +174,7 @@ For a normal pre-built-image installation on Ubuntu:
 
 ```bash
 sudo apt install fakeroot gcc mtd-utils squashfs-tools tftp-hpa \
-  netcat-openbsd iproute2 iputils-ping openssh-client
+  netcat-openbsd iproute2 iputils-ping openssh-client patch
 ```
 
 Ubuntu's `tftp-hpa` is required; another program named `tftp` may not support

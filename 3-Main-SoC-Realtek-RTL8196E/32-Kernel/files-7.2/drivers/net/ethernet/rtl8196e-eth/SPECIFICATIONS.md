@@ -4,7 +4,7 @@
 |---|---|
 | **Document date** | 2026-07-30 |
 | **Driver version** | 2.24 (`RTL8196E_DRV_VERSION` in `rtl8196e_main.c`). v2.24 fixes true LAN LED off by routing the board-declared active-low pad to an inactive GPIO output; the v2.23 datapath and recovery baseline is unchanged |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 Goals/non-goals contract and externally observable behaviour of the
 driver. The architecture rationale lives in `DESIGN.md`, findings and
@@ -98,23 +98,19 @@ audit history in `AUDIT.md`, per-release throughput in `PERFORMANCE.md`
 
 ## 6. File architecture
 
-| File              | Role                                                                          | Pure LOC |
-|-------------------|-------------------------------------------------------------------------------|---------:|
-| `rtl8196e_main.c` | net_device, NAPI poll, ISR, TX xmit, ethtool, sysfs, probe/remove             |      692 |
-| `rtl8196e_hw.c`   | MMIO registers, init sequence, KSEG1 helpers, PHY/MDIO, VLAN/NETIF/L2 tables  |      584 |
-| `rtl8196e_ring.c` | TX/RX descriptor rings, kick coalescing, napi_alloc_skb RX buffers, cache ops |      627 |
-| `rtl8196e_dt.c`   | Devicetree parsing (`interface@0` properties)                                 |       92 |
-| `rtl8196e_regs.h` | Register definitions (trimmed to what's used)                                 |      140 |
-| `rtl8196e_desc.h` | Hardware descriptor structures (`rtl_pktHdr`, `rtl_mBuf`)                     |       93 |
-| `rtl8196e_ring.h` | Ring API                                                                      |       60 |
-| `rtl8196e_hw.h`   | HW API                                                                        |       31 |
-| `rtl8196e_dt.h`   | DT API                                                                        |       19 |
-| **Total**         |                                                                               | **2 338** |
+| File              | Role                                                                          |
+|-------------------|-------------------------------------------------------------------------------|
+| `rtl8196e_main.c` | net_device, NAPI poll, ISR, TX xmit, ethtool, sysfs, probe/remove             |
+| `rtl8196e_hw.c`   | MMIO registers, init sequence, KSEG1 helpers, PHY/MDIO, VLAN/NETIF/L2 tables  |
+| `rtl8196e_ring.c` | TX/RX descriptor rings, kick coalescing, napi_alloc_skb RX buffers, cache ops |
+| `rtl8196e_dt.c`   | Devicetree parsing (`interface@0` properties)                                 |
+| `rtl8196e_regs.h` | Register definitions (trimmed to what's used)                                 |
+| `rtl8196e_desc.h` | Hardware descriptor structures (`rtl_pktHdr`, `rtl_mBuf`)                     |
+| `rtl8196e_ring.h` | Ring API                                                                      |
+| `rtl8196e_hw.h`   | HW API                                                                        |
+| `rtl8196e_dt.h`   | DT API                                                                        |
 
-Pure LOC = non-blank, non-comment lines (`gcc -fpreprocessed -dD -E -P`),
-re-verified exact at driver 2.6 on 2026-06-12. For comparison, the
-legacy `rtl819x` driver (17 files) totalled ~9 660 pure LOC — a ~4×
-reduction.
+The four `.c` files build into `rtl8196e_eth.o` (`Makefile` in this directory).
 
 ## 7. RX path
 
@@ -240,39 +236,41 @@ reduction.
 | `RTL8196E_RESET_RETRY_BASE_MS` | 1000 | `rtl8196e_main.c` (1/2/4 second retry backoff) |
 | `RTL8196E_DRV_VERSION`    | "2.24" | `rtl8196e_main.c` |
 
-## 11. Init sequence (in `rtl8196e_open()`)
+## 11. Init sequence
 
-1. `rtl8196e_hw_init()`: pinmux via syscon, switch clock cycle, MEMCR
-   (0 then 0x7f), FULL_RST + delay, LED direct mode, RX queue mapping,
-   L2 table clear, W1C pending IRQs.
-2. Set RX rings (pkthdr + mbuf base addresses) and TX ring base address.
-3. `rtl8196e_hw_init_phy()`: PHY reset + autoneg for the configured port.
-4. `rtl8196e_hw_vlan_setup()`: VLAN table entry + PVIDs.
-5. `rtl8196e_hw_netif_setup()`: NETIF table entry (MAC, VLAN, MTU, port mask).
-6. `rtl8196e_hw_l2_setup()`: L2 forwarding mode, flood control, STP
-   forwarding (+ optional `rtl8196e_force_trap` debug mode).
-7. `rtl8196e_hw_l2_add_cpu_entry()`: toCPU L2 entry for driver MAC —
-   on failure, trap-to-CPU fallback and skip to step 9.
-8. `rtl8196e_hw_l2_add_bcast_entry()` + `rtl8196e_hw_l2_check_cpu_entry()`
+At **probe**, `rtl8196e_hw_init()` performs the one-time SoC bring-up
+(ETH-S03, since v2.11): pinmux via syscon, switch clock cycle, MEMCR
+(0 then 0x7f), FULL_RST + delay, LED direct mode, RX queue mapping,
+L2 table clear, W1C pending IRQs — the ~650 ms of sleeps paid once, not
+on every `open()`. A best-effort L2-clear failure in `hw_init` is warned,
+not fatal — probe must still bring the interface up.
+
+`rtl8196e_open()` then only reprograms the volatile per-open state and
+starts the core, so a down/up costs milliseconds. Steps 1–8 are
+`rtl8196e_hw_reprogram()`, shared with the switch-core deep-reset worker:
+
+1. Set RX rings (pkthdr + mbuf base addresses) and TX ring base address.
+2. `rtl8196e_hw_init_phy()`: PHY reset + autoneg for the configured port.
+3. `rtl8196e_hw_vlan_setup()`: VLAN table entry + PVIDs.
+4. `rtl8196e_hw_netif_setup()`: NETIF table entry (MAC, VLAN, MTU, port mask).
+5. `rtl8196e_hw_l2_setup()`: L2 forwarding mode, flood control, STP
+   forwarding.
+6. `rtl8196e_hw_l2_add_cpu_entry()`: toCPU L2 entry for driver MAC —
+   on failure, trap-to-CPU fallback and skip to step 8.
+7. `rtl8196e_hw_l2_add_bcast_entry()` + `rtl8196e_hw_l2_check_cpu_entry()`
    readback verify — trap fallback on verify failure.
-9. `rtl8196e_hw_start()`: CPUICR (`TXCMD | RXCMD | BUSBURST_32WORDS |
+8. `rtl8196e_hw_start()`: CPUICR (`TXCMD | RXCMD | BUSBURST_32WORDS |
    MBUF_2048BYTES | EXCLUDE_CRC`), TRXRDY.
-10. `napi_enable()`.
-11. `rtl8196e_hw_enable_irqs()`: CPUIIMR (`RX_DONE_IE_ALL | LINK_CHANGE_IE
+9. `napi_enable()`.
+10. `rtl8196e_hw_enable_irqs()`: CPUIIMR (`RX_DONE_IE_ALL | LINK_CHANGE_IE
     | PKTHDR_DESC_RUNOUT_IE_ALL`).  TX completion is **not** unmasked
     here (software reclaim).
-12. Start queue, check link, start link poll timer.
+11. Start queue, check link, start link poll timer.
 
 `stop()` runs the reverse direction, reclaims completed TX descriptors after
 the hardware stops, counts only the remaining SKBs as `tx_dropped`, and
 **resets both rings** so the next `open()` starts from a canonical descriptor
 state (ETH-002).
-Step 1 (`rtl8196e_hw_init`, the ~650 ms one-time SoC bring-up) has been
-hoisted to **probe** (ETH-S03 done); `open()` now only reprograms the
-volatile per-open state (`rtl8196e_hw_reprogram`: ring bases, PHY,
-VLAN/NETIF/L2 entries) and starts the core, so a down/up costs milliseconds.
-A best-effort L2-clear failure in `hw_init` is warned, not fatal — probe
-must still bring the interface up.
 
 Every SWTCR/TLU BUSY timeout aborts the current table operation with
 `-ETIMEDOUT` after restoring `SWTCR0` and `TLU_CTRL`. VLAN and NETIF clears
@@ -283,18 +281,20 @@ use the existing trap-to-CPU fallback.
 ## 12. Module parameters
 
 All exposed under `/sys/module/rtl8196e_eth/parameters/` once the
-driver is loaded.  All read/write at runtime (mode 0644, root-only
-debug knobs — ETHDRV-005).
+driver is loaded, all mode 0644 (root-only operational knobs —
+ETHDRV-005). Defined in `rtl8196e_main.c`.
 
-| Parameter                | Type          | Default               | Purpose                                                  |
-|--------------------------|---------------|----------------------:|----------------------------------------------------------|
-| `link_poll_ms`           | unsigned int  | 0 (disabled)          | Link poll interval in ms; 0 disables the poll timer      |
-| `rtl8196e_debug`         | unsigned int  | 0                     | Extra debug logging (descriptor dumps via `dbg_timer`)   |
-| `rtl8196e_force_trap`    | unsigned int  | 0                     | Force all unknown traffic to CPU (debug)                 |
-| `rtl8196e_cpu_port_mask` | unsigned int  | `RTL8196E_CPU_PORT_MASK` (0x20) | CPU port mask for VLAN / L2                |
+| Parameter                  | Type          | Default                         | Purpose                                                  |
+|----------------------------|---------------|--------------------------------:|----------------------------------------------------------|
+| `rtl8196e_rx_stall_thresh` | unsigned int  | 32                              | Consecutive zero-delivery, budget-saturating RX polls before a switch-core deep reset; 0 disables |
+| `link_poll_ms`             | unsigned int  | 0 (disabled)                    | Link poll interval in ms; 0 disables the poll timer      |
+| `rtl8196e_cpu_port_mask`   | unsigned int  | `RTL8196E_CPU_PORT_MASK` (0x20) | CPU port mask for VLAN / L2                              |
 
-`link_poll_ms` and `rtl8196e_cpu_port_mask` are consumed at `open()`
-time only; a runtime write takes effect on the next down/up cycle.
+`rtl8196e_rx_stall_thresh` is read on every RX poll, so a runtime write
+takes effect immediately. `link_poll_ms` is latched at probe, and a DT
+`link-poll-ms` property overrides it. `rtl8196e_cpu_port_mask` is consumed
+by `rtl8196e_hw_reprogram()`, so a runtime write takes effect on the next
+down/up cycle or switch-core deep reset.
 
 ## 13. Sysfs attributes (under `/sys/class/net/eth0/`)
 
@@ -353,18 +353,15 @@ model provides the required single writer.
 
 ## 15. Verification
 
-Current baselines (6.18 head, gcc 15.2 toolchain — see
-`32-Kernel/CLAUDE.md` and the release tables in `PERFORMANCE.md`):
+Current per-release throughput is in the tables of `PERFORMANCE.md`;
+this section does not restate it. Release gate
+(`scripts/bench_release_iperf3.sh`, which quiesces OTBR and the radio path itself):
 
-- TCP RX (host → gateway): **~93.5–94 Mbit/s** (line-rate), retrans ~0
-- TCP TX (gateway → host): median **~70 Mbit/s** (run-to-run 69.3–72.8),
-  retrans ~0 — use a 5-rep median
-- Regression threshold: sustained TX below ~69 or RX below ~93, or any
-  non-zero TCP retransmission rate (`scripts/test_rtl8196e_eth.sh`; stop
-  OTBR first)
-- Pre-hardening v2.22 bench (2026-07-17): TCP RX 93.9 / TX 69.6,
-  RetransSegs 0.0000%, all anomaly counters 0. The safe-default checksum
-  follow-up requires a fresh performance run before release.
+- TCP TX median below `THR_TX_FLOOR` (69 Mbit/s) or TCP RX median below
+  `THR_RX_FLOOR` (88 Mbit/s) is flagged.
+- A TX median 2 Mbit/s or more below the previous release's median is a
+  regression.
+- Any non-zero TCP retransmission rate is a regression.
 
 Historical reference (v3.4.1, kernel 6.18.24, where the §8 kick
 coalescing was introduced): TCP RX 93.5 / TCP TX 70.1 / UDP TX 100M

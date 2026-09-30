@@ -6,6 +6,127 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.7.0] - 2026-09-30
+
+### Kernel — Linux 6.18.51 → 6.18.54 on the production line, with a new I-MEM policy
+
+The production line moves to the 6.18.54 point release. Images regenerated:
+`{lidl, sengled-e39-g8c} × {6.18}`. `uname -r` reads `6.18.54-rtl8196e-v4.7.0`. All
+58 patches apply cleanly with no refresh needed. The recorded text layout of 6.18.51
+does not carry over, so the 6.18.54 build is unpadded.
+
+The 6.18 I-MEM policy dated from 6.18.45 and had been selected on TX alone. It is
+replaced by a policy selected from empty-window profiles captured on 6.18.54, with
+the RX weight introduced for 7.2.8 (see below) set to 0.1:
+`scripts/imem/policies/6.18.54.tsv`, 89 sections, 15868/15872 bytes, bootstrap
+retention 97.2 %.
+
+Policy choice, benched on the Lidl bench box in one session, each candidate between
+runs of the previous policy (11 TX / 11 RX reps each):
+
+| 6.18.54 policy | TCP TX | TCP RX |
+|---|---:|---:|
+| previous (6.18.45 selection), three runs | 83.4 / 82.2 / 82.7 | 92.5 / 92.6 / 92.8 |
+| RX weight 0.5 (rejected) | 80.5 | 93.4 |
+| **RX weight 0.1 (shipped)** | **82.8** | **93.7** |
+
+The weight that suits 7.2.8 costs 2.3 Mbit/s of TX on 6.18.54 although its profile
+coverage matched the previous policy; the weight 0.1 holds TX and gains 1.1 Mbit/s
+of RX.
+
+Release bench of the shipped Lidl image (`PERFORMANCE.md`, v4.7.0 row): TCP RX
+93.3 Mbit/s (93.1–93.8), TCP TX 82.6 Mbit/s (80.2–84.6), UDP RX 41.9 Mbit/s at 56 %
+loss, UDP TX 36.2 Mbit/s at 0 % loss; zero retransmissions and a clean `dmesg`. The
+sengled-e39-g8c image is built but not benched.
+
+### Kernel — Linux 7.2.5 → 7.2.8 on the experimental line, with its own I-MEM policy
+
+The experimental line moves to the 7.2.8 point release. Images regenerated:
+`{lidl, sengled-e39-g8c} × {7.2}`. `uname -r` reads `7.2.8-rtl8196e-v4.7.0`. Three
+patches were refreshed for context offsets only (`arch-mips-Kconfig`,
+`net-core-dev.c`, `scripts-mod-modpost.c`); their added and removed lines are
+unchanged.
+
+The 7.2 line had never been profiled: its I-MEM policy was the 7.1.9 one carried
+over, and on 7.2.8 it no longer fitted the window (60 bytes over). The line now has
+its own policy, `scripts/imem/policies/7.2.8.tsv` (94 sections, 15868/15872 bytes),
+selected from empty-window profiles captured on 7.2.8. The selector gains an RX
+weight (`select_profile.py --rx-weight`, `IMEM_RX_WEIGHT` in
+`analyze_captures.sh`, default 0 = the previous TX-only objective): a TX-only
+selection left the RX-hot code out of the window and lost 3 Mbit/s of TCP RX.
+Deployed gateways receive more than they send (2:1 to 14:1 in frames on two
+production sites), so the shipped policy weights RX at 0.5.
+
+Policy choice, benched on the Lidl bench box (11 TX / 11 RX reps, wired link), all
+three selections on the same image base:
+
+| 7.2.8 policy | TCP TX | TCP RX | 300 s stress | UDP RX |
+|---|---:|---:|---:|---:|
+| TX-only (weight 0) | 86.2 | 90.7 | 90.7 | 38.2 |
+| weight 0.25 | 86.3 | 93.6 | 93.2 | 39.9 |
+| **weight 0.5 (shipped)** | **86.4** | **93.7** | **93.9** | **44.1** |
+| 7.2.5 reference (v4.5.0) | 84.3 | 93.7 | — | 41.5 |
+
+Release bench of the shipped Lidl image (`PERFORMANCE.md`, v4.7.0 row): TCP RX
+93.7 Mbit/s (92.8–93.9), TCP TX 86.3 Mbit/s (85.1–87.0), UDP RX 43.3 Mbit/s at 55 %
+loss, UDP TX 36.2 Mbit/s at 0 % loss; zero retransmissions and a clean `dmesg`. The
+sengled-e39-g8c image is built but not benched.
+
+### Kernel — how the I-MEM RX weight is chosen
+
+The weight is picked by a fixed rule rather than a scan, since the best of many
+noisy benches overstates its own gain. `scripts/imem/weight_curve.py` re-solves the
+exact knapsack offline for a grid of weights and prints the TX and RX profile
+coverage of each selection; it names two weights to bench (0.1 and 0.25 by default).
+Each is then benched between runs of the incumbent policy in one session and kept
+only if its TX median is no more than 1 Mbit/s below the incumbent and it gains at
+least 1 Mbit/s on TX or RX. The rule and the results so far are in
+`scripts/imem/README.md`, "Choosing the RX weight".
+
+### Kernel — device tree and configuration tidy-ups
+
+- The JFFS2 partition node of `rtl8196e.dts` is renamed `partition@400000` to match
+  its `reg` (it started at `0x400000` already; `0x420000` was the offset of the
+  original Tuya layout, which had a 128 KiB label partition in front). The node
+  name is not used by the kernel or the scripts, so nothing changes on the gateway;
+  the device tree is rebuilt with the images.
+- `config-7.2-realtek.txt` carried a malformed `# CONFIG_HZ_250=y` line, read as a
+  comment; the 7.2 build still ran at 250 Hz only because that is the Kconfig
+  default. It is now a real `CONFIG_HZ_250=y`, as on 6.18.
+
+### Docs — kernel documentation checked against the code
+
+The Markdown under `32-Kernel/` was reviewed against the driver sources, device
+trees and scripts. Stale facts are corrected (Ethernet module parameters, the v1.7
+UART-bridge worker model and 1 s blmode hold, the real watchdog reset delay of about
+671 s after the last ping, DNT as the shipped timer mode, I-MEM placement decided by
+the release policy, driver versions), dead links are removed, and the nine driver
+`AUDIT.md` ledgers are condensed to a current header, one entry per closed pass and
+a complete finding-ID registry. Six internal or superseded notes leave the public
+tree: `IMEM-7.2-DEBRIEF.md`, `IRAM-DMEM-MIPS16.md`, `AUDIT-TEMPLATE.md`,
+`POST-MORTEM-driver-perf.md`, and the Ethernet driver's `issue99.md` and
+`TX-RX-CPU-DECOMPOSITION.md`; `issue99.md` remains readable in the v4.6.0 tag. The
+Ethernet `DESIGN.md` gains the lasting rules from those notes (the RX poll is bounded
+by descriptors processed; how to measure inside the driver).
+
+### Docs — opening the case and wiring the serial header
+
+`0-Hardware/README.md` describes how to open the Lidl case without cracking it: the
+shell is held by eight clips and glued along the seam, so the adhesive is softened
+(IPA or gentle heat) and the clips are released one by one with non-conductive picks.
+A photo shows the opened halves; `docs/getting-started.md` links to the procedure.
+Getting started also embeds a step-by-step animation of fitting the J1 pin header and
+wiring the USB serial adapter; its prerequisites now list a male pin header and
+female-to-female Dupont wires.
+
+### Docs — backup and restore with an external programmer
+
+`30-Backup-Restore/README.md` again documents the external-programmer method in
+full: the programmer photo, the 200–209 mil SOP8 socket adapter the wide-body chip
+needs, why no programming clip should be used, what flashrom is and how to install
+it, its expected output, why it names the GD25Q127C "GD25Q128C", which images are
+safe to write and how to confirm the restore.
+
 ## [4.6.0] - 2026-09-26
 
 ### Bootloader — V3.2: an interrupted TFTP transfer no longer locks the loader
@@ -2114,7 +2235,7 @@ release candidate, not GA._
 The v2.14 candidate fix (ETHDRV-013, RX resync inside `tx_timeout`) proved
 **insufficient in the field**: a unit running `v3.8.5` (driver v2.7, which already
 carries that fix) recurred with the exact #99 signature after ~3.7 days. A full
-review (see the driver's `issue99.md`, cross-checked against the original Realtek
+review (see the driver's `issue99.md` in tag v4.6.0, cross-checked against the original Realtek
 SDK) found the real engine: the `PKTHDR_DESC_RUNOUT` storm is **self-sustaining
 regardless of how the switch-RX/`rx_idx` desync is entered**, and the NAPI poll has
 no escape — a zero-work poll under RUNOUT just re-enables the interrupt against an

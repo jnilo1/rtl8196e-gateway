@@ -7,15 +7,19 @@ stops. Its production objective is recovery, not live forensic tracing.
 ## Normal operation
 
 The BusyBox feeder opens `/dev/watchdog` and pings it every 30 seconds. The
-driver defaults to a 60-second software timeout and the hardware's maximum
-window is about 671 seconds (25 kHz timer clock). `nowayout` remains a
-read-only boot-time module parameter.
+driver reports a 60-second timeout, but that value only sets the feeder
+cadence: the hardware always runs in its longest bucket (OVSEL=9, about
+671 seconds at the 25 kHz timer clock), advertised to the watchdog core as
+`max_hw_heartbeat_ms`. Because 60 s is below that window, the core does not
+enforce 60 s itself. If the feeder stops, the reset comes from the hardware
+counter, about 671 seconds (roughly 11 minutes) after the last ping.
+`nowayout` remains a read-only boot-time module parameter.
 
 The watchdog also covers kernel panics and machine restarts:
 
 | Event | Driver action |
 |---|---|
-| feeder stops | watchdog core stops refreshing the hardware |
+| feeder stops | nothing refreshes the hardware; reset about 671 s after the last ping |
 | `panic()` / soft-lockup panic | arm the shortest hardware reset window |
 | restart callback | arm the shortest hardware reset window |
 
@@ -51,4 +55,5 @@ ls -l /dev/watchdog
 The expected probe line identifies driver v1.12, its configured timeout, and
 whether `nowayout` is active.
 
-For implementation and audit rationale, see `DESIGN.md` and `AUDIT.md`.
+For implementation and audit rationale, see [`DESIGN.md`](DESIGN.md) and
+[`AUDIT.md`](AUDIT.md).

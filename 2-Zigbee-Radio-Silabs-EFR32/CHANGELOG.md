@@ -4,6 +4,17 @@ All notable changes to the EFR32 firmware and tooling are documented here.
 
 ---
 
+## [4.7.0] - 2026-09-30
+
+### Tooling — `flash_efr32.sh` checks for `patch` up front
+
+The pinned universal-silabs-flasher is patched with `patch(1)` when its venv is
+created. On hosts without it (minimal Debian, containers, LXC) the venv was built
+without the probe-methods patch and the script aborted with a misleading "file or
+patch missing" message. `patch` is now checked before anything is installed, like
+`python3` and `python3-venv`, with the package to install; `docs/troubleshooting.md`
+and `docs/upgrading.md` list it in their host prerequisites.
+
 ## [4.6.0] - 2026-09-26
 
 _No EFR32 changes: the firmware images and the container sources are the ones

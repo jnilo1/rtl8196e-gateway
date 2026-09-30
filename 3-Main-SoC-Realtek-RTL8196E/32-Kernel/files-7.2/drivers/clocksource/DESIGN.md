@@ -2,7 +2,8 @@
 
 ## Platform and hardware contract
 
-The RLX4181 has no usable CP0 Count. TC1 is the continuous 28-bit clocksource
+CP0 Count is not used (the platform forces `cpu_has_counter` to 0), so the
+SoC timers keep time: TC1 is the continuous 28-bit clocksource
 and `sched_clock`; TC0 is the one-shot clockevent. DATA and COUNT values use
 bits [31:4]. `busclk / DivFactor` must equal the DT `refclk` exactly; the
 driver owns the 0x1c timer resource while WDTCNR remains a watchdog resource.
@@ -20,7 +21,7 @@ At 25 kHz the resolution is 40 us, the minimum deadline is 320 us, and the
 28-bit counter wraps after about 2 h 59 min. CDBR also clocks the watchdog;
 timer-rate changes require joint timer/watchdog validation.
 
-## Protected default
+## Protected mode (Kconfig default, not shipped)
 
 With `CONFIG_RTL819X_TC0_DNT=n`, Timer0 uses COUNTER mode. Every arm performs
 `disable -> DATA0 -> enable`, then observes COUNT0 against TC1. A zero COUNT0
@@ -29,7 +30,7 @@ echoes TC0_EN; the full sequence is retried up to four times. This path is
 safe but adds bounded busy-wait time while clockevent callbacks hold local IRQs
 off.
 
-## Do-not-toggle canary
+## Do-not-toggle (production)
 
 With `CONFIG_RTL819X_TC0_DNT=y`, the first clockevent performs T1:
 
@@ -53,7 +54,9 @@ has no TC0 enable edge, no polling, and no runtime reversion.
 
 The suspected cause is a slow-domain capture failure of the enable edge: field
 register evidence and the DNT experiment support it, but do not establish a
-vendor erratum. DNT is build-time opt-in and has no runtime control interface.
+vendor erratum. DNT is a build-time choice with no runtime control interface:
+the Kconfig default is `n`, but both shipped configurations
+(`config-6.18-realtek.txt`, `config-7.2-realtek.txt`) set it to `y`.
 
 ## Security and performance invariants
 

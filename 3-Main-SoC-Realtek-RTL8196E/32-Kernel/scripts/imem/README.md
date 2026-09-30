@@ -35,19 +35,64 @@ scripts/imem/build_profile_reference.sh 7.2
 
 Capture two idle, two TX and two RX profiles with
 `capture_profile.sh`, then decode and solve them with
-`analyze_captures.sh`. The exact knapsack objective is mean net TX samples; the
+`analyze_captures.sh`. By default (`IMEM_RX_WEIGHT=0`) the exact knapsack
+objective is mean net TX samples, but both shipped policies were selected with
+an RX weight (6.18.54: `0.1`, 7.2.8: `0.5`; see the policy headers). The
 bootstrap byte-retention gate must pass before a candidate may be built.
+
+`IMEM_RX_WEIGHT=<w>` adds RX coverage to that objective, with the RX samples
+rescaled to the TX total, so `w` values one percent of RX coverage at `w`
+percent of TX coverage; `0` (the default) is the TX-only selection.
+`IMEM_MANIFEST=<path>` keeps one manifest per weight when several are compared.
+A TX-only selection leaves the RX-hot code (`csum_partial`, the driver RX poll,
+GRO) out of the window: on 7.2.8 it covered 69 % of TX samples but only 56 % of
+RX samples and cost 3 Mbit/s of TCP RX. The deployed gateways receive far more
+than they send, so RX is not traded away for TX.
+
+### Choosing the RX weight
+
+The weight is chosen by a fixed rule, not by scanning. Each benched weight costs
+a build and a paired bench, the TX median moves by about 1 Mbit/s from bench to
+bench, and the best of many noisy weights overstates its own gain.
+
+1. Offline curve, no bench: `weight_curve.py <manifest> [--policy <incumbent.tsv>]`
+   re-solves the exact knapsack over a grid of weights and prints the TX and RX
+   coverage of each selection. The curve is a step then a slow tail: most of the
+   RX coverage arrives with the first small weight (`csum_partial` enters).
+2. Two candidates only: the tool suggests `0.1` and `0.25` when the step is
+   already reached at `0.1`, otherwise the first weight that reaches it and the
+   next one. Produce each manifest with `IMEM_RX_WEIGHT` and `IMEM_MANIFEST`.
+3. Paired bench in one session, each candidate between two runs of the
+   incumbent policy, criterion fixed before the run: TX median no more than
+   1 Mbit/s below the incumbent's mean, and at least +1 Mbit/s on TX or RX.
+   Otherwise the incumbent stays.
+4. A marginal winner (a gain just above 1 Mbit/s) may be confirmed with
+   `confirm_candidates.sh` before a release.
+
+Coverage does not predict throughput, especially on 6.18: on 6.18.54, `w = 0.5`
+matched the incumbent's TX coverage and still lost 2.3 Mbit/s of TCP TX against
+it. Results so far:
+
+| Line | Weight | TCP TX | TCP RX | Verdict |
+|---|---:|---:|---:|---|
+| 7.2.8 | 0 | 86.2 | 90.7 | RX regression |
+| 7.2.8 | 0.25 | 86.3 | 93.6 | tie with 0.5 |
+| 7.2.8 | 0.5 | 86.4 | 93.7 | shipped |
+| 6.18.54 | incumbent (6.18.45 selection) | 82.8 | 92.6 | mean of three runs |
+| 6.18.54 | 0.1 | 82.8 | 93.7 | shipped |
+| 6.18.54 | 0.5 | 80.5 | 93.4 | TX regression |
 
 Build the production-layout candidate from the resulting manifest:
 
 ```sh
 scripts/imem/build_optimized_candidate.sh 6.18 \
-  imem-work/6.18.45/profile-captures/selection-manifest.json
+  imem-work/6.18.54/profile-captures/selection-manifest.json
 ```
 
 Run the standard release benchmark on the exact candidate. It uses 11 TX and
 11 RX repetitions so each reported median is an observed run. A large-margin
-candidate may take the bounded fast path when TX is at least 80 Mbit/s, RX at
+candidate may take the bounded fast path (a manual rule, not enforced by any
+script) when TX is at least 80 Mbit/s, RX at
 least 90 Mbit/s, retransmissions and hard counters remain zero, and both
 `dmesg` gates pass. The exact policy is then recorded under `policies/` and is
 automatically applied by normal production builds of that kernel release.
@@ -58,10 +103,10 @@ candidate (`C`) with the previous production policy rebuilt on the same kernel
 
 ```sh
 scripts/imem/confirm_candidates.sh \
-  --candidate imem-work/6.18.45/production/candidate/kernel.img \
-  --incumbent imem-work/6.18.45/production/incumbent/kernel.img \
-  --output imem-work/6.18.45/confirmation-run1 \
-  --expect 6.18.45- 192.168.1.88
+  --candidate imem-work/6.18.54/production/candidate/kernel.img \
+  --incumbent imem-work/6.18.54/production/incumbent/kernel.img \
+  --output imem-work/6.18.54/confirmation-run1 \
+  --expect 6.18.54- 192.168.1.88
 ```
 
 This optional confirmation freezes six randomized order draws and their six exact
@@ -98,13 +143,16 @@ few dozen upstream size changes ahead of `net/` in link order move every hot
 function by a different amount, so their I-cache colours (address modulo
 8 KiB on this 2-way, 512-set, 16-byte-line cache) all change at once. On
 6.18.45 → 6.18.51 that alone cost 2.1 Mbit/s TX with identical hot code and an
-identical I-MEM policy (see the 13/09/2026 memo in the maintainer's archive).
+identical I-MEM policy (see the 6.18.51 entry of the
+[CHANGELOG](../../../CHANGELOG.md)).
 
 A **text layout** compensates it without touching any function: never-executed
 pad objects (`pad_*.S`, one `.space` in `.text.__text_pad_NNNN`, global symbol,
 kept alive by `-u`) inserted in `obj-y` order ahead of chosen objects so that
 each zone of hot functions lands either on the previous release's colours or
-exactly on its own. Layouts live under `layouts/<KERNEL_VERSION>/`:
+exactly on its own. Layouts live under `layouts/<KERNEL_VERSION>/`. The
+mechanism is dormant for the pinned releases: only `layouts/6.18.51/` exists,
+so 6.18.54 and 7.2.8 build unpadded. A layout holds:
 
 - `pads.patch` — the pad objects and their Makefile insertions; applied by
   `build_kernel.sh` after `patches-<line>/` to **production builds only**

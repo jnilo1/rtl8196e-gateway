@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-07-29 |
 | **Driver version** | 1.2 (`leds-gpio-pwm.c`) |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 This is the design companion to [`AUDIT.md`](AUDIT.md) (code-level audit of
 `leds-gpio-pwm.c`). It covers the hardware story both drivers share: the
@@ -21,10 +21,15 @@ the switch ASIC LED controller via the `PIN_MUX_SEL_2` register
 Source: RTL8196E-CG datasheet Rev 1.0, Table 3 (Shared I/O Pin Mapping)
 and Table 36 (PIN_MUX_SEL_2).
 
-| LED    | Label  | Pin | GPIO pad | LED function | PIN_MUX_SEL_2 bits | 00 = LED   | 11 = GPIO |
-|--------|--------|-----|----------|--------------|---------------------|------------|-----------|
-| LAN    | lan    | 116 | GPIOB[6] | LED_PORT4    | [13:12]             | LED_PORT4  | GPIOB6    |
-| STATUS | status | 114 | GPIOB[3] | LED_PORT1    | [4:3]               | LED_PORT1  | GPIOB3    |
+| Board | LED    | Label  | Pin | GPIO pad | LED function | PIN_MUX_SEL_2 bits | 00 = LED   | 11 = GPIO |
+|-------|--------|--------|-----|----------|--------------|---------------------|------------|-----------|
+| Lidl  | LAN    | lan    | 116 | GPIOB[6] | LED_PORT4    | [13:12]             | LED_PORT4  | GPIOB6    |
+| Lidl  | STATUS | status | 114 | GPIOB[3] | LED_PORT1    | [4:3]               | LED_PORT1  | GPIOB3    |
+| G4    | STATUS | status | —   | GPIOB[4] | LED_PORT2    | [7:6]               | LED_PORT2  | GPIOB4    |
+
+The Sengled Smart Hub G4 (`rtl8196e-sengled-e39-g8c.dts`) drives its STATUS
+LED from GPIO 12 (pad B4) and its LAN LED from pad B2 / LED_PORT0 (GPIO 10,
+bits [1:0]); its package pin numbers are not recorded here.
 
 Default value at reset: **10b (Reserved)** — neither LED nor GPIO mode.
 Software must explicitly write 00 (LED) or 11 (GPIO) after boot.
@@ -106,24 +111,30 @@ declared as gpio-leds, but GPIO 10 has no effect on the LAN LED — see
    software trigger does the opposite: the LED is **OFF by default**
    and flashes **briefly ON** for each TX/RX burst.
 
-3. **`FULL_RST` in `rtl8196e_hw_init()` wipes `LEDCREG`.**  Even if
+3. **`FULL_RST` in `rtl8196e_hw_init()` wiped `LEDCREG`.**  Even if
    the old ASIC driver had been compiled (it was not —
-   `CONFIG_RTL819X` is disabled), the new Ethernet driver resets the
+   `CONFIG_RTL819X` was disabled), the new Ethernet driver reset the
    entire switch core on `ndo_open`, clearing any prior LED register
-   configuration.  No code re-programmes `LEDCREG` afterwards.
+   configuration.  No code re-programmed `LEDCREG` afterwards.
 
-The net result: the LAN LED now has a **very low duty cycle** (~5 % ON)
-and appears **visibly dim** compared to the STATUS LED — a clear
+The net result: the LAN LED then had a **very low duty cycle** (~5 % ON)
+and appeared **visibly dim** compared to the STATUS LED — a clear
 regression from the stock firmware where both LEDs matched.
 
-Additionally, the `gpio-leds` driver only supports binary brightness
-(0 or 1).  There is no way for users to adjust perceived brightness.
+Additionally, the `gpio-leds` driver only supported binary brightness
+(0 or 1).  There was no way for users to adjust perceived brightness.
+
+This section describes the 5.10 port as it was.  Today the switch-core
+reset runs at probe, and `led_mode` reprograms `LEDCREG`; current
+behaviour is described in "LAN LED — ASIC/GPIO mux on the board-declared
+pad" below.
 
 ## The `leds-gpio-pwm` driver — rationale and design
 
 ### Goal
 
-Provide user-adjustable brightness (0-255) for both LEDs, without
+Provide user-adjustable brightness (0-255) for the STATUS LED (the LAN
+LED is not driven by this driver; see "LAN LED" below), without
 hardware PWM support (the RTL8196E has none), while keeping full
 compatibility with standard LED triggers (`netdev`, `heartbeat`,
 `default-on`, etc.).

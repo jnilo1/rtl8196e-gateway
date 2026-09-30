@@ -304,7 +304,7 @@ CONFIG_ARCH_FLATMEM_ENABLE=y
 # CONFIG_HZ_48 is not set
 # CONFIG_HZ_100 is not set
 # CONFIG_HZ_128 is not set
-# CONFIG_HZ_250=y
+CONFIG_HZ_250=y
 # CONFIG_HZ_256 is not set
 # CONFIG_HZ_1000 is not set
 # CONFIG_HZ_1024 is not set

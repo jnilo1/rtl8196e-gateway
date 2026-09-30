@@ -2,10 +2,9 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-07-30 |
+| **Last updated** | 2026-09-30 |
 | **Driver version** | 1.2 |
-| **Release target** | firmware v4.0.0 |
-| **Maintained kernels** | Linux 6.18 and 7.1, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
 
 Architecture companion to [`AUDIT.md`](AUDIT.md). This driver is the sole
 path to the 16 MB GD25Q127C SPI NOR — bootloader, kernel, squashfs rootfs
@@ -18,8 +17,11 @@ byte-compare, not a smoke test.
 Adapted from Weijie Gao's out-of-tree RTL819x SPI controller driver
 (`MODULE_AUTHOR` preserved), modernized for 6.x during the port:
 `devm_spi_alloc_host`, `readl_poll_timeout`-bounded waits, per-transfer
-divisor selection, parked-CS defaults, and a remove/shutdown path that
-quiesces hardware without unregister churn. The register semantics are
+divisor selection, parked-CS defaults, and a devres quiesce action
+(`realtek_spi_quiesce()`, registered just before
+`devm_spi_register_controller()`) that parks CS and disables the clock only
+after the SPI core has unregistered the controller and drained its queue;
+`shutdown()` reuses the same idempotent body. The register semantics are
 vendor lore (no public datasheet for this block): the READY bit is written
 back alongside the CS bits, and DATA-register accesses trigger the
 transfer clocks. Empirically validated by every boot since v3.0.
@@ -76,9 +78,9 @@ and disables the optional clock.
 spi-rtl819x ← spi core ← jedec,spi-nor (flash@0, 25 MHz)
                             └── mtd fixed-partitions:
                                 boot+cfg (128 KB, read-only)
-                                linux    (1.9 MB)
-                                rootfs   (squashfs)
-                                userdata (JFFS2)
+                                linux    (1.9 MB, kernel)
+                                rootfs   (2 MB, squashfs)
+                                jffs2-fs (12 MB, JFFS2 userdata)
 ```
 
 The `read-only` flag on `boot+cfg` is enforced by the mtd core. Everything

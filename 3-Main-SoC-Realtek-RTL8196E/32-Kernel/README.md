@@ -7,8 +7,8 @@ This directory contains everything needed to build a modern Linux kernel for the
 
 | `KERNEL` | Version | Sources |
 |----------|---------|---------|
-| `6.18` *(default)* | [Linux 6.18.51](https://cdn.kernel.org/pub/linux/kernel/v6.x/) — stable 6.18.x LTS family | `patches-6.18/`, `files-6.18/`, `config-6.18-realtek.txt` |
-| `7.2` | [Linux 7.2.5](https://cdn.kernel.org/pub/linux/kernel/v7.x/) | `patches-7.2/`, `files-7.2/`, `config-7.2-realtek.txt` |
+| `6.18` *(default)* | [Linux 6.18.54](https://cdn.kernel.org/pub/linux/kernel/v6.x/) — stable 6.18.x LTS family | `patches-6.18/`, `files-6.18/`, `config-6.18-realtek.txt` |
+| `7.2` | [Linux 7.2.8](https://cdn.kernel.org/pub/linux/kernel/v7.x/) | `patches-7.2/`, `files-7.2/`, `config-7.2-realtek.txt` |
 
 The two lines coexist — each has its own patch/overlay/config triplet and its own pre-built
 images. A Lidl user who sets nothing builds and flashes the `6.18` line exactly as before.
@@ -17,7 +17,7 @@ images. A Lidl user who sets nothing builds and flashes the `6.18` line exactly 
 
 Linux 6.18 is an **[LTS](https://www.kernel.org/category/releases.html)** release, maintained upstream for several years. It brings a modern kernel surface to the gateway while remaining practical to cross-compile against the project's Lexra MIPS toolchain. Compared to legacy 3.10 / 4.14 / 5.10 lines, 6.18 gives us current driver APIs, recent security hardening defaults, and the in-kernel UART↔TCP bridge (`rtl8196e-uart-bridge`) used for the Zigbee radio path.
 
-The `build_kernel.sh` script pins a specific 6.18.x stable release via `KERNEL_VERSION` and applies our local `patches-6.18/` on top. Bumping to a newer point release is a one-line edit — the patches, overlay and config are keyed on the 6.18 family, not the point version.
+The `build_kernel.sh` script pins a specific 6.18.x stable release via `KERNEL_VERSION` and applies our local `patches-6.18/` on top. The patches, overlay and config are keyed on the 6.18 family, not the point version, but a point bump is more than editing `KERNEL_VERSION`: the patches must still apply cleanly, and the I-MEM policy is keyed on the exact point release (`scripts/imem/policies/<KERNEL_VERSION>.tsv`, likewise any text layout under `scripts/imem/layouts/<KERNEL_VERSION>/`). When no policy file matches, the build silently falls back to the historical default I-MEM placement, so a bump must carry over or re-select the policy — see [`scripts/imem/README.md`](scripts/imem/README.md).
 
 ## The Porting Challenge
 
@@ -38,7 +38,7 @@ The result is a clean, maintainable kernel that can be updated to newer 6.18.x p
 |----------------|-------------|
 | [`patches-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18) · `patches-7.2/` | Patches to apply on vanilla Linux 6.18 / 7.2 |
 | [`files-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/files-6.18) · `files-7.2/` | New files to add to the kernel tree (Realtek platform support, custom drivers) |
-| [`config-6.18-realtek.txt`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/config-6.18-realtek.txt) · `config-7.2-realtek.txt` | Kernel configuration (one per line) |
+| [`config-6.18-realtek.txt`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/config-6.18-realtek.txt) · `config-7.2-realtek.txt` | Kernel configuration (one per kernel line) |
 | `kernel-img/<board>/kernel-<line>.img` | Pre-built flashable images, one per (board, kernel) pair |
 | [`build_kernel.sh`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh) | Build script |
 | [`tools/`](tools/README.md) | Optional on-gateway kernel diagnostic tools |
@@ -86,17 +86,19 @@ and in the devicetree Kconfig choice (`files-<line>/arch/mips/realtek/Kconfig`).
 ### Build process
 
 The script will:
-1. Download Linux 6.18.x source (if not present)
-2. Apply all patches from `patches-6.18/`
+1. Download the pinned Linux source of the selected line (if not present)
+2. Apply all patches from `patches-<line>/`, then the release's text layout pads when `scripts/imem/layouts/<KERNEL_VERSION>/` exists (none exists for the pinned 6.18.54 and 7.2.8)
 3. Overlay Realtek platform files from `files-<line>/`
 4. Compile the kernel
 5. Apply the exact point release's versioned I-MEM policy, when present
 6. Verify its local holes, SRAM budget and runtime-patching safety
 7. Package the compressed kernel image (zboot) into `kernel-img/<board>/kernel-<line>.img`, ready to flash
 
-The shipped 6.18.51 and 7.2.5 policies live under `scripts/imem/policies/`.
+The shipped 6.18.54 and 7.2.8 policies live under `scripts/imem/policies/`.
 `IMEM_POLICY_DISABLE=1` is an experimental escape hatch and requires a clean build tree;
-normal production builds always apply and verify the matching policy.
+normal production builds always apply and verify the matching policy. Without a policy
+file for the exact point release, the build uses the historical default I-MEM placement.
+The selection procedure is documented in [`scripts/imem/README.md`](scripts/imem/README.md).
 
 **Requirements**: [Toolchain](../../1-Build-Environment/README.md) must be built first.
 
@@ -135,5 +137,6 @@ Those patches (originally for Linux 4.14) were heavily reworked for 5.10, then r
 
 ## 🔗 References
 
-- [Linux 6.18](https://kernel.org/)
+- [Linux 6.18 and 7.2](https://kernel.org/)
+- [I-MEM selection and text layout tools](scripts/imem/README.md)
 - [Lexra processors](https://en.wikipedia.org/wiki/Lexra)

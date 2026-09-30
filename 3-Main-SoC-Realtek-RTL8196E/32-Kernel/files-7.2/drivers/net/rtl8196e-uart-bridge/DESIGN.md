@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-06-12 |
-| **Driver version** | 1.4 |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
+| **Last updated** | 2026-09-30 |
+| **Driver version** | 1.7 |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 This document explains what the driver does, why it exists, and the key
 choices that shaped the stabilised code in
@@ -23,7 +23,7 @@ shared transport for **every** host ↔ radio conversation:
 |---|---|---|
 | NCP-UART-HW (EmberZNet 7.5.1) | Z2M / ZHA | EZSP v13 |
 | RCP-UART-HW (802.15.4) | `cpcd` → `zigbeed` | CPC (Zigbee or Thread) |
-| OT-RCP (OpenThread) | `otbr-agent` | Spinel-over-CPC |
+| OT-RCP (OpenThread) | `otbr-agent` | Spinel over HDLC |
 
 Anything that talked to the radio over the former userspace
 `serialgateway` now talks to the bridge on the same TCP endpoint. The
@@ -84,13 +84,17 @@ socket with `MSG_DONTWAIT`; the return value back to the tty core is
 always the full `count` (bytes are accounted for in the driver's drop
 counters, not fed back as flow-control pressure to the flip buffer).
 
-### Single kthread for TCP accept/recv
+### Accept worker plus one client worker (v1.7)
 
-The TX direction (TCP → UART) runs in one kernel thread that blocks in
-`kernel_accept()` then `kernel_recvmsg()`, and writes the received
-bytes into the UART via the existing `tty->ops->write` path. This is
-the minimal amount of concurrency the driver needs: one thread per
-listen socket, one client at a time.
+The TX direction (TCP → UART) is split across two kernel threads. The
+accept worker (`DRV_NAME "-worker"`) stays blocked in
+`kernel_accept()` on the listen socket, even while a client is
+connected. Each accepted connection gets its own client worker
+(`DRV_NAME "-client"`) that blocks in `kernel_recvmsg()` and
+writes the received bytes into the UART via the existing
+`tty->ops->write` path. At most one client worker is active at a time;
+keeping the accept worker free is what lets a new connection replace
+the current one (below).
 
 ### Single-client listener
 
@@ -105,7 +109,7 @@ previous client"` in the log). That is what lets a restarted Z2M /
 that any peer able to reach the port can evict the connected client at
 any time, which is part of why an untrusted segment calls for the
 loopback + SSH-tunnel deployment in `SECURITY.md` (see also
-AUDIT.md BRIDGE-002).
+AUDIT.md BRIDGE-009).
 
 ### Sysfs-only control interface
 
@@ -127,7 +131,8 @@ until an init script — `S50uart_bridge` in the userdata overlay —
 writes `enable=1` once `/dev/ttyS1` is known to exist. This avoids
 the auto-arm race where the bridge would try to open the tty before
 the 8250 driver had created the device node. The init script also
-pulls `FIRMWARE_BAUD` and `BRIDGE_BIND` from `/userdata/etc/radio.conf`
+pulls `FIRMWARE_BAUD`, `BRIDGE_BIND` and the optional
+`FIRMWARE_FLOW_CTRL` from `/userdata/etc/radio.conf`
 before arming, so the operator's persistent choices land on every
 boot without a second tool.
 
@@ -253,7 +258,7 @@ on the next pulse without driver state.
 Boards that wire the EFR32 bootloader-entry pin to a SoC GPIO (the
 Sengled G4; the Lidl board has none) get `blmode_pulse`
 (discussions #123/#126): assert `blmode_gpio` → nRST pulse as above →
-hold blmode 5 s across the Gecko bootloader's pin-sampling window →
+hold blmode 1 s across the Gecko bootloader's pin-sampling window →
 release. Both lines are claimed per pulse with the same open-drain
 semantics; `blmode_gpio` defaults to -1 ("no such pin", the trigger
 returns `-ENODEV`) and is DT-seeded from `blmode-gpios`.
@@ -263,12 +268,12 @@ folded into `nrst_pulse`. `nrst_pulse` must keep meaning "reset into
 the application" — `flash_efr32.sh` and `recover_efr32` depend on it
 after a flash — so a presence-of-blmode-gpios behaviour switch would
 leave a blmode-wired board unable to ever start its application. Two
-knobs, two meanings. The sequence holds `nrst_pulse_lock` for ~5.1 s;
+knobs, two meanings. The sequence holds `nrst_pulse_lock` for ~1.1 s;
 a concurrent pulse writer just waits, the UART→TCP hot path is
 untouched (the lock is never taken there). One system-level nuance
 (AUDIT.md BRIDGE-003): the kernel serializes every built-in module's
 sysfs parameter access on a single global lock (`kernel/params.c`), so
-during the 5.1 s sequence *all* built-in param reads/writes — including
+during the ~1.1 s sequence *all* built-in param reads/writes — including
 this driver's own `stats` — queue behind it. Only the hot path is
 truly unaffected.
 

@@ -73,7 +73,7 @@
 	};
 };
 
-/* Activation de l'UART0 pour la console */
+/* Enable UART0 for the console */
 &uart0 {
 	status = "okay";
 };
@@ -121,7 +121,7 @@
 	memory-region = <&wdtcrash>;
 };
 
-/* Configuration SPI Flash */
+/* SPI flash configuration */
 &spi0 {
 	status = "okay";
 	
@@ -151,7 +151,7 @@
 				reg = <0x200000 0x200000>;      /* 2 MB  */
 			};
 
-			partition@420000 {
+			partition@400000 {
 				label = "jffs2-fs";
 				reg = <0x400000 0xc00000>;      /* 12 MB */
 			};

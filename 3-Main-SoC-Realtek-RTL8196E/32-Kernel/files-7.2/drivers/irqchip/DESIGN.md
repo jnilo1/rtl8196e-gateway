@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-06-12 |
-| **Driver version** | 1.0 |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
+| **Driver version** | 1.2 |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 Architecture companion to [`AUDIT.md`](AUDIT.md). Explains what the RTL8196E
 interrupt controller actually is, how the driver maps it onto the Linux
@@ -54,7 +54,9 @@ by an 8 h OTBR soak at 460 800 baud with zero overruns.
    dispatches every pending bit (`__ffs` order, lowest first), so whichever
    IP fires first drains all ready sources; the sibling IP then takes the
    documented spurious path (`pending == 0`, enter/exit only). The handler
-   is `__iram` (Lexra on-chip instruction RAM, hot path).
+   carries `__iram`, but release builds disable the default placement and
+   let the release I-MEM policy decide residency; neither current policy
+   lists the handler, so it runs from normal kernel text.
 3. **Legacy irqdomain**, 32 hwirqs at fixed virq base 16
    (`irq_domain_create_legacy`), `xlate_onecell`. `intc_map()` caches the
    virqs of the three hot sources (12/13/15) for the handler's `switch`;
@@ -80,8 +82,9 @@ The timer DT node is parented to `&cpuintc/<7>`, so `timer-rtl819x`
 requests CPU IRQ 7 directly and **never traverses this driver's
 `.irq_unmask`**. But the only hardware path TC0 → CPU is through INTC
 IRR1 + GIMR — there is no bypass (verified against the bootloader:
-`31-Bootloader/boot/monitor.c:163,190` routes TC0 via IRR1, `irq.c:39`
-arms GIMR bit 8). Hence the unconditional `GIMR = BIT(8)` at init; clearing
+`timer_init()` in `31-Bootloader/boot/timer.c` routes TC0 via IRR1 and
+arms GIMR bit 8 through `request_IRQ()` in `boot/irq.c`). Hence the
+unconditional `GIMR = BIT(8)` at init; clearing
 it hangs the kernel at clocksource init. No chained handler is installed on
 IP7, so there is no double dispatch; GISR bit 8 clears when the timer
 driver W1Cs its own `TC_IR`. Full analysis: AUDIT IRQ-002 (rejected).
@@ -111,6 +114,7 @@ DT node: `intc@3000`, compatible `realtek,rtl819x-intc`,
    write per interrupt.
 5. **`pending = GIMR & GISR`**, never GISR alone — masked sources must not
    be dispatched.
-6. **The handler stays `__iram`** — IRAM placement is part of the measured
-   interrupt-latency budget on this platform (see the exp/no-imem bench
-   history before touching any `__iram` annotation).
+6. **The handler's I-MEM residency belongs to the release policy** — in
+   shipped images `__iram` is a no-op and `scripts/imem/policies/<kernel>.tsv`
+   decides what is resident (today: not the handler); change that by a
+   bench-gated policy update, not by editing the annotation.

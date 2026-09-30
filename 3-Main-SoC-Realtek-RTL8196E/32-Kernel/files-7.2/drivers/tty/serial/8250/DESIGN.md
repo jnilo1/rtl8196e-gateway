@@ -4,13 +4,13 @@
 |---|---|
 | **Last updated** | 2026-07-18 |
 | **Driver version** | 1.7 |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`) |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
 
 Architecture companion to [`AUDIT.md`](AUDIT.md). This is the glue
 driver for **UART1 = ttyS1 = the EFR32 radio link** — the wire under
 the uart-bridge, Z2M/cpcd/otbr-agent, and `flash_efr32.sh`. UART0
 (console, ttyS0) deliberately stays on the stock `ns16550a` path; this
-driver never touches it. The `files-6.18` and `files-7.1` overlays
+driver never touches it. The `files-6.18` and `files-7.2` overlays
 carry byte-identical copies of the driver and of these docs.
 
 ## 1. Why a glue driver at all

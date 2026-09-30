@@ -41,7 +41,7 @@ are live: writing flips the running bridge without reload.
 | `flow_control` | rw | `0`/`none` = off (needed during EFR32 flash), `1`/`hw` = CRTSCTS (default), `2`/`sw` = XON/XOFF handled by the bridge. Readback is always numeric. An `hw` request is clamped to `sw` on a board without `realtek,hw-flow-control` (no RTS/CTS wiring) |
 | `enable` | rw | 1 = arm the bridge, 0 = disarm. Boot default 0 |
 | `armed` | ro | 1 when both UART and listen socket are live |
-| `stats` | ro | `rx=... tx=... drops_nocli=... drops_err=... drops_tx=...` |
+| `stats` | ro | `rx=... tx=... drops_nocli=... drops_err=... drops_tx=... xoff=... xon=... tx_pause_timeouts=...` |
 | `nrst_pulse` | wo, root | write 1 to pulse the EFR32 nRST line low for 100 ms (radio recovery — resets into the **application**) |
 | `nrst_gpio` | rw | gpio-rtl819x line wired to EFR32 nRST. Default 12 (pad B4, Lidl gateway) |
 | `blmode_pulse` | wo, root | write 1 to reset the EFR32 **into its bootloader**: assert `blmode_gpio`, pulse nRST 100 ms, hold blmode 1 s, release. `-ENODEV` when `blmode_gpio` is -1 |
@@ -67,7 +67,9 @@ probe that creates `/dev/ttyS1`.
 Board-specific defaults can be described in an optional root node of the
 board DTS, looked up by compatible at driver init (the bridge is not a
 platform driver — no device binds to the node, and the unbound platform
-device it produces under `/sys/devices/platform/` is harmless):
+device it produces under `/sys/devices/platform/` is harmless). The
+example below is illustrative only — it shows every property at once and
+matches no shipped board:
 
 ```dts
 radio-bridge {
@@ -94,6 +96,12 @@ radio-bridge {
   unwired UART. The Lidl board sets it; the Sengled G4, which does not wire
   RTS/CTS, omits it. Choosing the runtime mode for a given radio firmware
   is a separate concern — see `FIRMWARE_FLOW_CTRL` below.
+
+The shipped values: the Lidl board (`rtl8196e.dts`) sets `nrst-gpios` to
+line 12 and `realtek,hw-flow-control`, with no `blmode-gpios`; the
+Sengled G4 (`rtl8196e-sengled-e39-g8c.dts`, which includes
+`rtl8196e.dts`) overrides `nrst-gpios` to line 11, adds `blmode-gpios` on
+line 13 and deletes `realtek,hw-flow-control`.
 
 Precedence is **DT < kernel command line < runtime sysfs writes**: the
 node seeds the boot-time defaults of `nrst_gpio` / `blmode_gpio` and the

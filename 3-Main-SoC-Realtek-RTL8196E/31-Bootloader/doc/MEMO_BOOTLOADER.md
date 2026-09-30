@@ -412,7 +412,7 @@ cvimg -i userdata.jffs2 -o userdata.bin \
 | `-b` | Burn address in flash |
 | `-a` | Output alignment (optional) |
 
-See [1-Build-Environment/11-realtek-tools/cvimg](../../1-Build-Environment/11-realtek-tools/cvimg/) for the tool source.
+See [1-Build-Environment/11-realtek-tools/cvimg](../../../1-Build-Environment/11-realtek-tools/cvimg/) for the tool source.
 
 ---
 

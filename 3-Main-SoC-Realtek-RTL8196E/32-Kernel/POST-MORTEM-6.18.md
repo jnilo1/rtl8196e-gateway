@@ -1,7 +1,6 @@
 # Post-mortem: Linux 5.10.252 → 6.18 port for RTL8196E (Lexra RLX4181)
 
 **Date:** 2026-04-13
-**Branch:** `kernel-6.18`
 **Scope:** experimental port of the Linux kernel on the Lidl Silvercrest
 Zigbee gateway (Realtek RTL8196E SoC, Lexra RLX4181 MIPS-I CPU,
 big-endian, 32 MB RAM, no FPU, no ll/sc, non-coherent DMA).
@@ -27,11 +26,11 @@ accumulated driver API drift and one misdirection about which
 
 ## Original plan vs. reality
 
-The plan document (`ticklish-wobbling-ladybug.md`) was built around
-seven étapes and warned loudly that **étape 2 (Lexra CPU atomics)**
+The porting plan was built around
+seven steps and warned loudly that **step 2 (Lexra CPU atomics)**
 was the high-risk part and could be a hard wall.
 
-| Étape | Planned effort | Actual effort | Notes |
+| Step | Planned effort | Actual effort | Notes |
 |---|---|---|---|
 | 0 Scaffolding | 0.5d | ~15 min | trivial |
 | 1 Diagnostic map | 2–3d | 30 min | 25/45 patches applied cleanly; the rest collapsed to three mechanical categories |
@@ -39,10 +38,11 @@ was the high-risk part and could be a hard wall.
 | 3 Vendor drivers | 2–3d | ~1h | rename storm (SPI master→controller, timer API, etc.) but mechanical |
 | 4 rtl8196e-eth | 1–2d | ~15 min | pre-existing driver already used stable 6.x APIs |
 | 5 First boot | 2–4d | **several hours** | one silent-boot bug ate the entire day |
-| Clean-up + patch regeneration | — | ~1h | script already existed, just needed a paramétrable rewrite |
+| Clean-up + patch regeneration | — | ~1h | script already existed, just needed a parameterisable rewrite |
 
-The plan's fear ("la refonte des atomics MIPS en 6.x empêche une
-coexistence propre avec un CPU sans ll/sc") turned out to be
+The plan's fear (in its own words, translated: "the MIPS atomics
+rework in 6.x prevents clean coexistence with a CPU without ll/sc")
+turned out to be
 unfounded. The actual wall was something the plan did not
 anticipate at all.
 
@@ -445,7 +445,7 @@ go silent.**
 **Fix** (`ecaa671`, `fix(kernel/dts): force rtl8196e-uart driver
 binding for UART1`): drop the `"ns16550a"` fallback from the
 uart1 node in both `files/arch/mips/boot/dts/realtek/rtl819x.dtsi`
-(5.10) and `files-6.18/.../rtl819x.dtsi` (6.18). `rtl8196e-uart`
+(the 5.10 overlay, removed since in v3.0.0) and `files-6.18/.../rtl819x.dtsi` (6.18). `rtl8196e-uart`
 is the only candidate left; it wins the match deterministically
 on both kernels, its probe runs, `syscon_regmap_lookup_by_phandle`
 returns the real regmap, `regmap_update_bits()` sets the UART1
@@ -529,7 +529,7 @@ software-latency problem.
    460 800 should work.  It didn't.
 
 3. **Found the clue in the bootloader.**
-   `31-Bootloader/boot/uart.c:77` programs:
+   `31-Bootloader/boot/uart.c` (line 77 at the time) programs:
 
    ```c
    divisor = (cpu_clock / 16) / BAUD_RATE - 1;
@@ -599,95 +599,39 @@ static void rtl8196e_uart_set_divisor(struct uart_port *port,
    By arming at a "fake" baud that forces a specific `quot`, you can
    verify what the hardware actually produces on the wire.  One sysfs
    write discriminated the two hypotheses in 20 seconds.
-4. **Incremental kernel builds don't re-copy `files-6.18/`.**
-   The build script skips file overlay when the build tree already
-   exists.  After editing a source in `files-6.18/`, either `cp`
-   manually into the build tree or pass `clean`.
+4. **Incremental kernel builds didn't re-copy `files-6.18/`** (at the
+   time).  The build script skipped the file overlay when the build
+   tree already existed.  Fixed since: `build_kernel.sh` now rsyncs
+   the overlay into the build tree on every run.
 
 ---
 
 ## UART bridge hardening pass (2026-04-16)
 
-A security and robustness audit of the in-kernel `rtl8196e-uart-bridge`
-driver led to a single-session hardening pass.  All changes are confined
-to `rtl8196e_uart_bridge_main.c` and two init scripts; the hot paths
-(UART→TCP `receive_buf` and TCP→UART worker loop) are untouched.
+A security and robustness pass on the in-kernel `rtl8196e-uart-bridge` added the
+`bind_addr` parameter and root-only permissions on the connection parameters, TCP
+keepalive on the client socket, transactional reconfiguration (a failed change rolls
+back instead of leaving a half-armed bridge), and the read-only `armed` and `stats`
+parameters. It also stopped arming the bridge at `late_initcall`, when `/dev/ttyS1`
+does not exist yet: the module now loads with `enable=0` and the `S50uart_bridge`
+init script arms it.
 
-### Security
-
-| Change | Detail |
-|--------|--------|
-| `bind_addr` parameter | New sysfs param (default `0.0.0.0`).  Allows restricting the listen socket to a specific interface, e.g. `echo 127.0.0.1 > .../bind_addr`. |
-| sysfs permissions | `tty`, `port`, `bind_addr` → 0600 (root-only).  `baud`, `enable` stay 0644. |
-| `SO_KEEPALIVE` on client | Detects dead clients (crash/network cut) via TCP keepalive instead of waiting for the next UART→TCP sendmsg to fail. |
-
-### Robustness
-
-| Change | Detail |
-|--------|--------|
-| Transactional reconfig | All `param_set_*` callbacks now save the old value, attempt the change, and rollback on failure.  Previously a failed port/baud/tty/bind change left the sysfs value updated but the bridge in a broken or half-armed state. |
-| `reconfig_listen` failure → full disarm | If `kthread_run` fails after replacing the listen socket, the bridge now calls `bridge_disarm_locked()` instead of leaving a zombie state (`armed=true` but no worker, no listen socket). |
-| `drops_tx` under mutex | Moved the `drops_tx` increment inside `bridge_lock` to avoid a data race on 32-bit (u64 accesses are not atomic on MIPS32). |
-| `TCP_NODELAY` on listen socket removed | Had no effect (Nagle only matters on connected sockets).  Removed to avoid confusion. |
-
-### Observability
-
-| Change | Detail |
-|--------|--------|
-| `stats` param (0444) | `cat .../stats` → `rx=… tx=… drops_nocli=… drops_err=… drops_tx=…`.  Live counters without disarming. |
-| `armed` param (0444) | Reflects actual bridge state.  `enable` now reflects intent only.  `enable=1 armed=0` means "wants to run but hasn't managed to arm yet". |
-| Client IP:port logged | `client connected from 192.168.1.200:46912` via `kernel_getpeername()`.  Previous client replacement also logged. |
-| Disconnect reason | `client disconnected (recvmsg=0 EOF)` vs `(recvmsg=-104)` for `ECONNRESET`. |
-| Rollback warnings | `pr_warn` on every failed reconfig+rollback: `baud=… failed (…), rolling back to …`. |
-| Termios log → `pr_debug` | Reduces boot noise; available via `dyndbg` when needed. |
-
-### Boot sequence
-
-The module no longer auto-arms at `late_initcall` time.  Previously,
-it logged a misleading `cannot resolve /dev/ttyS1: -2` / `auto-arm
-failed: -2` because devtmpfs hadn't created the device node yet.
-
-New flow:
-1. `late_initcall` → module loads with `enable=0`, logs `loaded` only.
-2. `S50uart_bridge` init script reads `BRIDGE_BAUD` from
-   `/userdata/etc/radio.conf` (default 460800), writes baud + `enable=1`.
-3. `S60serialgateway` checks `armed=1` → skips launching `serialgateway`.
-
-Result: clean dmesg with no error messages during normal boot.
+The bridge has changed a great deal since (a worker per client and client
+replacement in v1.7, more counters, flow control). Its current behaviour is
+described next to the source, in `files-6.18/drivers/net/rtl8196e-uart-bridge/`
+(`README.md`, `DESIGN.md`, `SECURITY.md`).
 
 ---
 
-## What still needs doing
+## Outcome
 
-- **Étape 6:** stability validation on hardware. iperf3
-  baseline vs. 5.10 (target: within ~10%), 24h uptime check,
-  OTBR REST-API smoke test, boothold/GPIO LED functional
-  checks, memory watermark after steady state.
-- **Étape 7:** CHANGELOG entry, decision on tag
-  (`v2.3.0-experimental`?), and decision on whether/when
-  `kernel-6.18` merges back into `main` or stays as a long-
-  running experimental branch while 5.10 SLTS remains
-  production.
+The port completed, and 6.18 became the single production kernel line
+in v3.0.0 (see `../CHANGELOG.md`).
 
 ---
 
 ## Reproducibility
 
-From a clean working tree at commit `e604655`:
-
-```
-cd 3-Main-SoC-Realtek-RTL8196E/32-Kernel
-./build_kernel_618.sh clean
-```
-
-produces `kernel-6.18.img` (~1.26 MB) with:
-
-- `linux-6.18.tar.xz` downloaded from kernel.org,
-- 45 patches from `patches-6.18/` applied cleanly,
-- 34 overlay files from `files-6.18/` dropped in,
-- `config-6.18-realtek.txt` as the `.config`,
-- zero warnings, zero errors,
-- a `vmlinux` identified by `readelf` as ELF32 MIPS R3000
-  (Lexra correctly mapped to R3000-class).
-
-Flash with `flash_kernel.sh` (the default target is `kernel-6.18.img`).
+The build script, patch count and image name quoted at the time of
+this port have all changed since. See `README.md` in this directory for
+the current build procedure.

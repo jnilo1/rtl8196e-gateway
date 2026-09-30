@@ -1,9 +1,9 @@
-RTL8196E Gateway - v4.6.0
-J. Nilo - 2026-09-26
+RTL8196E Gateway - v4.7.0
+J. Nilo - 2026-09-30
 ---
 crosstool-NG 1.28.0 (gcc 15.2.0 + binutils 2.45.1)
 musl 1.2.6
-linux 6.18.51
+linux 6.18.54
 busybox 1.38.0
 dropbear 2026.94
 nano 9.2 (ncurses 6.6)

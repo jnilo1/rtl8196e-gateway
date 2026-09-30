@@ -7,8 +7,8 @@ KERNEL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LINE="${1:-}"
 CAPTURES="${2:-}"
 case "$LINE" in
-	6.18) VERSION=6.18.51 ;;
-	7.2) VERSION=7.2.5 ;;
+	6.18) VERSION=6.18.54 ;;
+	7.2) VERSION=7.2.8 ;;
 	*) echo "usage: $0 <6.18|7.2> <capture-directory>" >&2; exit 2 ;;
 esac
 [ -d "$CAPTURES" ] || { echo "capture directory not found: $CAPTURES" >&2; exit 2; }
@@ -16,7 +16,10 @@ CAPTURES="$(realpath "$CAPTURES")"
 REFERENCE="$KERNEL_DIR/imem-work/$VERSION/profile-reference"
 BUILD="$KERNEL_DIR/linux-$LINE-imem-profile-rtl8196e"
 SYMBOLS="$CAPTURES/vmlinux.symbols.txt"
-MANIFEST="$CAPTURES/selection-manifest.json"
+# IMEM_RX_WEIGHT adds RX coverage to the TX objective (0 = TX-only);
+# IMEM_MANIFEST names the output when several weights are compared.
+RX_WEIGHT="${IMEM_RX_WEIGHT:-0}"
+MANIFEST="${IMEM_MANIFEST:-$CAPTURES/selection-manifest.json}"
 
 mips-lexra-linux-musl-nm -n "$REFERENCE/vmlinux" >"$SYMBOLS"
 for direction in tx rx; do
@@ -34,7 +37,8 @@ python3 "$SCRIPT_DIR/select_profile.py" \
 	--build-dir "$BUILD" --reference "$REFERENCE" \
 	--tx "$CAPTURES/tx1.json" --tx "$CAPTURES/tx2.json" \
 	--rx "$CAPTURES/rx1.json" --rx "$CAPTURES/rx2.json" \
-	--release "$VERSION" --replicates 200 --out "$MANIFEST"
+	--release "$VERSION" --replicates 200 --rx-weight "$RX_WEIGHT" \
+	--out "$MANIFEST"
 
 python3 - "$MANIFEST" <<'PY'
 import json, sys

@@ -4,7 +4,7 @@
 |---|---|
 | **Document date** | 2026-08-02 |
 | **Driver version** | 2.24 (`RTL8196E_DRV_VERSION` in `rtl8196e_main.c`) |
-| **Active release** | v4.6.0 (kernels `6.18.51` and `7.2.5`, `-rtl8196e-v4.6.0`); driver 2.24 adds true board-aware LAN LED off without changing the v2.23 datapath/recovery baseline |
+| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`); driver 2.24 adds true board-aware LAN LED off without changing the v2.23 datapath/recovery baseline |
 
 Architecture reference for the from-scratch Ethernet driver. Findings
 and audit history live in `AUDIT.md`; the goals/non-goals contract is
@@ -164,6 +164,13 @@ mbuf of a different index, the v2.6 lesson — bound-check `ph_len`,
 All anomaly paths count in `ethtool -S` (`rx_wild_*`, `rx_bad_len`,
 `rx_mbuf_no_shadow`, …) and must stay at zero in nominal flow.
 
+The poll is bounded by descriptors **processed**, not packets delivered.
+Every drop path re-arms and advances `rx_idx` without delivering, so a
+budget counted in deliveries let a flood of droppable descriptors keep the
+poll running forever, CPU pinned in the NET_RX softirq until the
+soft-lockup detector fired. The vendor RX DSR bounds its loop by total
+iterations in the same way.
+
 Checksum offload is opt-in per frame: only characterized, unfragmented IPv4
 UDP with both descriptor checksum bits set receives
 `CHECKSUM_UNNECESSARY`. Every other protocol and encapsulation uses
@@ -218,8 +225,9 @@ What this is **not**: IP multicast. mDNS, ND and Matter traffic carry ethertype
 discarded it happens at the IP layer and lands in `/proc/net/snmp`, never in
 `rx_dropped`.
 
-To settle it on any box, use `canari/ethercensus` (AF_PACKET ethertype census, no
-promiscuous mode, writes nothing). Its own `ptype_all` registration suppresses
+To settle it on any box, run an ethertype census on the gateway from an
+AF_PACKET `ETH_P_ALL` socket (no promiscuous mode, writes nothing). The
+socket's own `ptype_all` registration suppresses
 the `drop:` label while it runs, so `rx_dropped` freezing for exactly the capture
 window and resuming afterwards is itself the proof that the unhandled-protocol
 path was the producer.
@@ -345,10 +353,24 @@ down/up recovers).
 | sysc syscon regmap | `rtl819x.dtsi` | PIN_MUX_SEL/PIN_MUX_SEL_2 writes in `hw_init` — shared with `8250_rtl819x` and `gpio-rtl819x` (the former ETHDRV-007 / GPIO-007 contention is closed in v2.7: 0x44 fields derive from the GPIO node) |
 | `gpio0` node `gpio-line-names` + `realtek,led-pads` | board DTS | decides each B2–B6 pad's 0x44 function — named → GPIO (`0b11`), in `led-pads` → LED_PORTn (`0b00`), neither → unclaimed GPIO/Hi-Z (`0b11`); `led-pads` absent → v2.7 fallback (unnamed → `0b00`) |
 | Ethernet `lan-led-gpios` | board DTS | active-low GPIO descriptor for the same physical LAN LED pad: Lidl B6, Sengled G4 B2; preloads the inactive level and lets `led_mode=off` disconnect only that pad from the ASIC |
-| `__iram` (`asm/mach-realtek/imem.h`) | arch overlay | hot functions (xmit, poll, ISR, ring ops) in 16 KB zero-wait I-SRAM |
+| `__iram` (`asm/mach-realtek/imem.h`) | arch overlay | marks the hot functions (xmit, poll, ISR, ring ops) for the historical default placement in the 16 KB zero-wait I-MEM. Release builds disable that placement and apply the per-version I-MEM policy (`scripts/imem/policies/`), which is selected from profiles; `__iram` is then empty |
 | `dma_cache_*` (`asm/cacheflush.h`) | MIPS arch | the entire coherency model of §3 |
 | S10network (userdata) | rootfs/userdata | persists the random MAC across boots (`ifconfig hw ether` at boot) |
-| `scripts/test_rtl8196e_eth.sh` | `32-Kernel/scripts/` | the mandatory regression gate (~94 RX / ~73 TX Mbit/s, OTBR stopped) |
+| `scripts/test_rtl8196e_eth.sh` | `32-Kernel/scripts/` | the mandatory regression gate (OTBR stopped); current figures in `PERFORMANCE.md`, release floors `THR_TX_FLOOR`/`THR_RX_FLOOR` in `bench_release_iperf3.sh` |
+
+### Measuring inside the driver
+
+- ftrace `function_graph` does not work on this Lexra port (its entries are not
+  captured), and wide tracing wedges the 400 MHz core under network load. The
+  plain `function` tracer works with a small `set_ftrace_filter` (a handful of
+  functions around the driver) and a trace buffer of 8 MB or more; compute the
+  timings offline from the timestamps.
+- Code placed in a custom text section, such as `__iram` under the default
+  placement, is excluded from mcount instrumentation and cannot be traced; time
+  it with explicit `ktime_get_ns()` counters instead.
+- The I-MEM selection does not trace at all: it samples the program counter with
+  the kernel's `profile=` sampler on a dedicated profiling image
+  (`scripts/imem/README.md`).
 
 ## 8. Invariants (do not break)
 

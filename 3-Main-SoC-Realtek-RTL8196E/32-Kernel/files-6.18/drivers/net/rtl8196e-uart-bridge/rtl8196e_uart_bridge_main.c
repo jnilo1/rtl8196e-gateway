@@ -95,7 +95,7 @@ static DEFINE_MUTEX(bridge_lock);
  * Serializes nrst_pulse and blmode_pulse callers without blocking the
  * UART->TCP hot path. Held across the claim / assert / msleep / release
  * sequence in param_set_nrst_pulse() and param_set_blmode_pulse() (the
- * latter holds it ~5.1 s — a concurrent pulse writer just waits);
+ * latter holds it ~1.1 s — a concurrent pulse writer just waits);
  * bridge_lock is never taken there, so bridge_port_receive_buf() can
  * keep forwarding bytes to any TCP client still connected (the radio
  * reset is expected to drop in-flight bytes on the wire, but it must

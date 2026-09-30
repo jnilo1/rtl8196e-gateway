@@ -51,12 +51,12 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL="${KERNEL:-6.18}"
 case "$KERNEL" in
     6.18)
-        KERNEL_VERSION="6.18.51"        # exact tarball version
+        KERNEL_VERSION="6.18.54"        # exact tarball version
         KERNEL_MAJOR_MINOR="6.18"       # stable family (paths, image name)
         KERNEL_MAJOR="6.x"              # kernel.org /pub/linux/kernel/v${MAJOR}/
         ;;
     7.2)
-        KERNEL_VERSION="7.2.5"          # exact tarball version (linux-7.2.5.tar.xz)
+        KERNEL_VERSION="7.2.8"          # exact tarball version (linux-7.2.8.tar.xz)
         KERNEL_MAJOR_MINOR="7.2"
         KERNEL_MAJOR="7.x"
         ;;

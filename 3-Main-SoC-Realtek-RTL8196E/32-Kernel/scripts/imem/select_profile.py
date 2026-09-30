@@ -189,6 +189,9 @@ def main():
     parser.add_argument("--cross", default="mips-lexra-linux-musl-")
     parser.add_argument("--replicates", type=int, default=200)
     parser.add_argument("--seed", type=int, default=8196)
+    parser.add_argument("--rx-weight", type=float, default=0.0,
+                        help="weight of RX coverage relative to TX coverage "
+                             "(0 = TX-only objective)")
     args = parser.parse_args()
 
     build = os.path.abspath(args.build_dir)
@@ -300,7 +303,21 @@ def main():
             eligible.append(candidate)
 
     eligible.sort(key=lambda item: (item["address"], item["object"], item["section"]))
-    nominal_values = [item["tx_mean"] for item in eligible]
+    if args.rx_weight < 0:
+        raise SystemExit("--rx-weight must be non-negative")
+    if args.rx_weight and not rx_profiles:
+        raise SystemExit("--rx-weight needs --rx profiles")
+    # RX samples are rescaled to the TX total, so a weight w values one
+    # percent of RX coverage at w percent of TX coverage.
+    tx_total = sum(item["tx_mean"] for item in eligible)
+    rx_total = sum(max(item["rx_mean"], 0.0) for item in eligible)
+    rx_scale = args.rx_weight * tx_total / rx_total if rx_total else 0.0
+
+    def objective(tx, rx):
+        return tx + rx_scale * max(rx, 0.0)
+
+    nominal_values = [objective(item["tx_mean"], item["rx_mean"])
+                      for item in eligible]
     used, value, selected_indices = solve(eligible, nominal_values)
     selected = set(selected_indices)
 
@@ -310,11 +327,16 @@ def main():
     nominal_bytes = sum(eligible[index]["size"] for index in selected)
     for _ in range(args.replicates):
         blocks = [rng.randrange(len(tx_profiles)) for _ in tx_profiles]
+        rx_blocks = ([rng.randrange(len(rx_profiles)) for _ in rx_profiles]
+                     if rx_scale else [])
         values = []
         for candidate in eligible:
             sampled = sum(poisson(rng, candidate["tx"][block])
                           for block in blocks) / len(blocks)
-            values.append(sampled)
+            sampled_rx = (sum(poisson(rng, candidate["rx"][block])
+                              for block in rx_blocks) / len(rx_blocks)
+                          if rx_blocks else 0.0)
+            values.append(objective(sampled, sampled_rx))
         _, _, indices = solve(eligible, values)
         chosen = set(indices)
         for index in chosen:
@@ -345,7 +367,10 @@ def main():
             "rx": [{"path": path, "sha256": sha256(path)} for path in args.rx],
         },
         "dynamic_code": {"tables_scanned": scanned, "tables_absent": absent},
-        "solver": {"objective": "mean net TX samples", "occupation": used,
+        "solver": {"objective": ("mean net TX samples" if not rx_scale else
+                                 f"mean net TX samples + {args.rx_weight:g} x RX "
+                                 "coverage (RX rescaled to the TX total)"),
+                   "rx_weight": args.rx_weight, "occupation": used,
                    "value": value, "selected_sections": len(selected)},
         "bootstrap": {"replicates": args.replicates, "seed": args.seed,
                       "median_byte_retention": median_retention,

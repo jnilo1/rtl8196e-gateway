@@ -186,7 +186,6 @@ exclude_docs: |
   3-Main-SoC-Realtek-RTL8196E/32-Kernel/test_results_*/
   # Gitignored dev notes — not in git, also excluded from the site
   3-Main-SoC-Realtek-RTL8196E/32-Kernel/COMPRESSION.md
-  3-Main-SoC-Realtek-RTL8196E/32-Kernel/IRAM-DMEM-MIPS16.md
   3-Main-SoC-Realtek-RTL8196E/32-Kernel/OPUS_REVIEW_PROMPT.md
   # Dev notes — Ethernet driver perf analysis, contributor-only
   3-Main-SoC-Realtek-RTL8196E/32-Kernel/PERF-ANALYSIS.md

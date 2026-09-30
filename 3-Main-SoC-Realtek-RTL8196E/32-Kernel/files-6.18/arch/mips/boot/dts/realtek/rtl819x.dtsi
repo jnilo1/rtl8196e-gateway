@@ -178,11 +178,11 @@
 			compatible = "realtek,rtl8196e-wdt";
 			reg = <0x0000311c 0x4>;
 			/*
-			 * 60 s soft timeout; the driver picks the smallest
-			 * OVSEL bucket whose hardware overflow exceeds it.
-			 * Hardware ceiling at the slowclk (25 kHz) CDBR
-			 * tick is ~671 s (OVSEL=1001); 60 s buys 2× margin
-			 * over the BusyBox S25watchdog -t 30 kick cadence.
+			 * 60 s soft timeout sets the feeder contract only:
+			 * the driver always runs the hardware at OVSEL=1001,
+			 * ~671 s at the slowclk (25 kHz) CDBR tick, so a
+			 * stopped feeder resets ~671 s after its last kick.
+			 * BusyBox S25watchdog kicks every 30 s (-t 30).
 			 */
 			timeout-sec = <60>;
 		};

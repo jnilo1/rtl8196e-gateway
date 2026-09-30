@@ -4,7 +4,7 @@
  *
  * Cross-subsystem contract between the rtl819x irqchip (producer of the INTC
  * fields), the MIPS architecture dispatcher (producer of @ip7) and the rtl819x
- * watchdog (consumer: 1 Hz flight recorder + panic record v8).
+ * watchdog (former consumer; it no longer snapshots these fields).
  *
  * Motivation (issue #99): the field soft-lockup is interrupt-storm-shaped,
  * but the storming line is unidentified. Two blind spots in the stock

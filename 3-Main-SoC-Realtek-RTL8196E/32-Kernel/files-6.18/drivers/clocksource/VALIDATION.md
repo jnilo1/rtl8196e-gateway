@@ -2,7 +2,7 @@
 
 ## Static gate
 
-- both 6.18 and 7.1 Kconfig patches apply from clean;
+- both 6.18 and 7.2 Kconfig patches apply from clean;
 - build `timer-rtl819x.o` with `W=1` for `RTL819X_TC0_DNT=n` and `=y`;
 - run checkpatch and compile the RTL8196E DTB;
 - inspect DNT disassembly: DATA0 store precedes IR unmask; only T1 writes TC0
@@ -11,8 +11,9 @@
 ## Required configuration
 
 `TICK_ONESHOT`, `NO_HZ_COMMON`, `NO_HZ_IDLE` and high-resolution timers must
-be enabled. `RTL819X_TC0_DNT` defaults to `n`; canary images set it to `y` at
-build time only. HZ remains the branch's configured value.
+be enabled. `RTL819X_TC0_DNT` defaults to `n` in Kconfig; the shipped
+configurations set it to `y` at build time. HZ remains the kernel line's
+configured value.
 
 ## Hardware canary
 
@@ -69,29 +70,3 @@ start-observation work from the steady-state arm path. It does not establish
 that every workload or board gains the same amount. Re-run this paired A/B
 when changing the timer, IRQ, Ethernet RX, CPU-frequency, or NO_HZ
 configuration.
-
-## Kernel 7.1 reference with DNT — 2026-07-29
-
-The same three-run wired suite was then run with `RTL819X_TC0_DNT=y` in both
-branches and the same operational conditions (reboot and OTBR stopped before
-each run). This is an inter-branch reference: it does **not** isolate DNT,
-because DNT is enabled in both images and the kernel, compiler and other
-branch configuration differ.
-
-| Metric | 6.18 DNT=y (mean) | 7.1 DNT=y (mean) | Change |
-| --- | ---: | ---: | ---: |
-| TCP host to board | 91.4 Mbit/s | 89.8 Mbit/s | -1.8% |
-| TCP board to host | 69.7 Mbit/s | 70.4 Mbit/s | +1.0% |
-| TCP 300 s stress | 92.4 Mbit/s | 90.1 Mbit/s | -2.5% |
-| UDP 50 Mbit/s receive | 47.1 Mbit/s | 49.7 Mbit/s | +5.6% |
-| UDP 50 Mbit/s receive loss | 5.7% | 0.5% | -5.2 pp |
-| UDP 100 Mbit/s receive | 33.7 Mbit/s | 39.9 Mbit/s | +18.3% |
-| UDP 100 Mbit/s receive loss | 64.7% | 58.0% | -6.7 pp |
-| UDP bidirectional, host to board | 21.5 Mbit/s | 22.6 Mbit/s | +5.3% |
-
-The 7.1 image reached the requested 50 Mbit/s UDP receive rate with zero loss
-in two of three runs (the third lost 1.5%). Interface hardware errors remained
-zero and interface drops remained approximately 302. TCP is comparable across
-the branches: the small opposing changes require more repetitions before any
-branch-wide TCP performance claim. For this board and workload, 7.1 with DNT
-is the preferred candidate for follow-up UDP and bidirectional testing.

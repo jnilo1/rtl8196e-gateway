@@ -1787,7 +1787,7 @@ static int rtl8196e_probe(struct platform_device *pdev)
 	INIT_WORK(&priv->swcore_reset_work, rtl8196e_swcore_reset_work_fn);
 	skb_queue_head_init(&priv->tx_defer_list);
 
-	/* NAPI deferral tuning: on this slow CPU (Lexra RLX4181 @ 380 MHz),
+	/* NAPI deferral tuning: on this slow CPU (Lexra RLX4181 @ 400 MHz),
 	 * the driver drains the RX ring faster than packets arrive (~3 pkt/poll).
 	 * Each NAPI cycle then pays the fixed cost of napi_complete_done()
 	 * which in 6.x flushes GRO + walks up the TCP stack (~180 µs/cycle).

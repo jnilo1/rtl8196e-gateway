@@ -1,0 +1,326 @@
+<title>J1 Serial Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: animated schematic of the J1 header on the left, the six steps as a clickable list on the right. */
+:root {
+  --bg: #f3f4f2;
+  --fg: #171c1a;
+  --muted: #5b6661;
+  --line: #d3d8d5;
+  --panel: #ffffff;
+  --stage: #dfe4e1;
+  --accent: #0a7c86;
+  --accent-soft: #d7eef0;
+  --warn: #b3261e;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101413; --fg: #e6eae8; --muted: #9aa5a0; --line: #2b3431; --panel: #171d1b;
+    --stage: #0c100f; --accent: #4fc3cc; --accent-soft: #163a3d; --warn: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101413; --fg: #e6eae8; --muted: #9aa5a0; --line: #2b3431; --panel: #171d1b;
+  --stage: #0c100f; --accent: #4fc3cc; --accent-soft: #163a3d; --warn: #ff8a80;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); padding-inline: 16px; padding-block: 24px 40px; line-height: 1.5; }
+.wrap { max-width: 1100px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.sub { margin: 4px 0 0; color: var(--muted); max-width: 65ch; }
+.grid { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.stage { flex: 1 1 560px; min-width: 0; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.stage svg { display: block; width: 100%; height: auto; }
+.side { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+ol.steps li button {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: 28px 1fr; gap: 10px;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; color: var(--muted);
+}
+ol.steps li button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+ol.steps .n { font-family: var(--font-mono); font-weight: 500; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; }
+ol.steps .t { font-weight: 600; color: var(--fg); }
+ol.steps .d { display: none; font-size: 0.92rem; margin-top: 2px; }
+ol.steps li.on button { background: var(--panel); border-color: var(--line); color: var(--fg); }
+ol.steps li.on .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+ol.steps li.on .d { display: block; }
+.ctl { display: flex; gap: 8px; flex-wrap: wrap; }
+.ctl button { font: inherit; font-weight: 500; cursor: pointer; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+.ctl button:hover { border-color: var(--accent); }
+.ctl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl .go { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 96px; }
+.note { font-size: 0.85rem; color: var(--muted); margin: 0; max-width: 70ch; }
+.note code { font-family: var(--font-mono); font-size: 0.95em; }
+
+/* ---- Scene (board colours are fixed: it is a picture of a black PCB) ---- */
+svg text { font-family: var(--font-mono); }
+.silk { fill: #7d8d86; font-size: 14px; }
+.lbl { fill: #dfe7e3; font-size: 15px; text-anchor: end; }
+.lbl.dim { fill: #8b9992; }
+.tag { font-size: 15px; font-weight: 500; }
+
+.plug { transition: transform 1s ease .5s; }
+.r1 .plug { transform: translateY(42px); }
+.plug-tag { opacity: 0; transition: opacity .6s 1.2s; }
+.r1 .plug-tag { opacity: 1; }
+
+.jbox { opacity: 0; }
+.c2 .jbox { opacity: 1; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { stroke-opacity: .35; } }
+.plabel { opacity: 0; transition: opacity .6s; }
+.r2 .plabel { opacity: 1; }
+
+#hdr { opacity: 0; transform: scale(1.35); transform-box: fill-box; transform-origin: center; transition: opacity .7s, transform .9s cubic-bezier(.2,.8,.3,1); }
+.r3 #hdr { opacity: 1; transform: scale(1); }
+.pad { fill: none; stroke: #d4a94a; stroke-width: 3; }
+
+.hbody { transition: opacity .6s; }
+.c4 .hbody { opacity: .12; }
+.flip { opacity: 0; transition: opacity .5s; }
+.c4 .flip { opacity: 1; }
+.blob { transform: scale(0); transform-box: fill-box; transform-origin: center; transition: transform .3s ease var(--d, 0s); }
+.r4 .blob { transform: scale(1); }
+.iron { opacity: 0; }
+.c4 .iron { opacity: 1; animation: iron 3.8s linear forwards; }
+@keyframes iron {
+  0%   { transform: translate(60px,-40px); opacity: 0; }
+  5%, 16%   { transform: translate(0,0); opacity: 1; }
+  21%, 32%  { transform: translate(0,-34px); }
+  37%, 48%  { transform: translate(0,-68px); }
+  53%, 64%  { transform: translate(0,-102px); }
+  69%, 80%  { transform: translate(0,-136px); }
+  85%, 94%  { transform: translate(0,-170px); opacity: 1; }
+  100% { transform: translate(60px,-210px); opacity: 0; }
+}
+
+.w { fill: none; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.r5 .w { stroke-dashoffset: 0; transition: stroke-dashoffset 1.2s ease var(--d, 0s); }
+.wend { opacity: 0; transition: opacity .3s; }
+.r5 .wend { opacity: 1; transition-delay: var(--d, 0s); }
+.vcc { opacity: 0; transition: opacity .6s 1.6s; }
+.r5 .vcc { opacity: 1; }
+
+.usb { transition: transform .9s ease; transform: translateX(44px); }
+.r6 .usb { transform: translateX(0); }
+.led { fill: #3b4a44; transition: fill .4s .8s; }
+.r6 .led { fill: #52e08a; }
+.term { opacity: 0; transition: opacity .7s .9s; }
+.r6 .term { opacity: 1; }
+.pcline { opacity: 0; transition: opacity .5s .5s; }
+.r6 .pcline { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+  .c4 .iron { opacity: 1; transform: translate(0,-170px); }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>J1 Serial Console</h1>
+    <p class="sub">Solder a 2.54 mm male pin header onto the Lidl Silvercrest and connect a 3.3 V USB-to-serial adapter with Dupont wires. Three wires, no power from the adapter.</p>
+  </header>
+
+  <div class="grid">
+    <div class="stage">
+      <svg id="scene" viewBox="0 0 900 520" role="img" aria-label="Animated diagram: fitting the J1 pin header and wiring the serial adapter">
+        <!-- PCB -->
+        <rect x="20" y="20" width="470" height="420" rx="14" fill="#16201d" stroke="#2c3a35" stroke-width="2"/>
+        <text class="silk" x="44" y="418">TYGWZ1  REV1.0.2.7</text>
+
+        <!-- flash U3 -->
+        <g>
+          <rect x="44" y="70" width="80" height="100" rx="3" fill="#0f1113" stroke="#2c3a35"/>
+          <text class="silk" x="84" y="116" text-anchor="middle">U3</text>
+          <text class="silk" x="84" y="136" text-anchor="middle">flash</text>
+        </g>
+        <!-- TYZS4 radio module -->
+        <g>
+          <rect x="300" y="40" width="170" height="150" rx="3" fill="#b9c0c4" stroke="#8a9398"/>
+          <text x="385" y="108" text-anchor="middle" fill="#20272a" font-size="17" font-weight="500">TYZS4</text>
+          <text x="385" y="130" text-anchor="middle" fill="#3a4448" font-size="14">EFR32</text>
+        </g>
+        <!-- RTL8196E -->
+        <g>
+          <rect x="290" y="310" width="170" height="110" rx="3" fill="#0f1113" stroke="#2c3a35"/>
+          <text x="375" y="370" text-anchor="middle" fill="#8b9992" font-size="17">RTL8196E</text>
+        </g>
+        <!-- micro-USB power port (bottom edge) and plug -->
+        <rect x="118" y="424" width="44" height="16" rx="2" fill="#8b949c"/>
+        <text class="silk" x="176" y="436">5 V</text>
+        <g class="plug">
+          <path d="M140 478 V520" stroke="#0f1113" stroke-width="8" stroke-linecap="round"/>
+          <rect x="124" y="430" width="32" height="16" rx="2" fill="#c8ced1"/>
+          <rect x="116" y="446" width="48" height="34" rx="6" fill="#22282a" stroke="#3a4448"/>
+        </g>
+        <text class="tag plug-tag" x="190" y="470" fill="#ff8a80">power unplugged</text>
+
+        <!-- J1 pads -->
+        <g class="pads">
+          <circle class="pad" cx="250" cy="270" r="7"/><circle class="pad" cx="250" cy="236" r="7"/>
+          <circle class="pad" cx="250" cy="202" r="7"/><circle class="pad" cx="250" cy="168" r="7"/>
+          <circle class="pad" cx="250" cy="134" r="7"/><circle class="pad" cx="250" cy="100" r="7"/>
+        </g>
+        <rect class="jbox" x="224" y="72" width="52" height="226" rx="4" fill="none" stroke="#33d1e0" stroke-width="3" stroke-dasharray="8 5"/>
+        <text x="250" y="60" text-anchor="middle" fill="#33d1e0" font-size="17" font-weight="500">J1</text>
+
+        <!-- pin labels -->
+        <g class="plabel">
+          <text class="lbl dim" x="222" y="105">6 SWCLK</text>
+          <text class="lbl dim" x="222" y="139">5 SWDIO</text>
+          <text class="lbl" x="222" y="173">4 RX</text>
+          <text class="lbl" x="222" y="207">3 TX</text>
+          <text class="lbl" x="222" y="241">2 GND</text>
+          <text class="lbl dim" x="222" y="275">1 3V3</text>
+        </g>
+
+        <!-- pin header -->
+        <g id="hdr">
+          <rect class="hbody" x="237" y="84" width="26" height="204" rx="2" fill="#15181a" stroke="#3a4448"/>
+          <g fill="#d4a94a">
+            <rect x="245" y="95" width="10" height="10"/><rect x="245" y="129" width="10" height="10"/>
+            <rect x="245" y="163" width="10" height="10"/><rect x="245" y="197" width="10" height="10"/>
+            <rect x="245" y="231" width="10" height="10"/><rect x="245" y="265" width="10" height="10"/>
+          </g>
+        </g>
+
+        <text class="tag flip" x="330" y="286" fill="#33d1e0">board flipped: solder side</text>
+        <!-- solder blobs: bottom pin first -->
+        <g fill="#e3e7e9" stroke="#9aa4a9">
+          <circle class="blob" style="--d:.25s" cx="250" cy="270" r="7"/>
+          <circle class="blob" style="--d:.85s" cx="250" cy="236" r="7"/>
+          <circle class="blob" style="--d:1.45s" cx="250" cy="202" r="7"/>
+          <circle class="blob" style="--d:2.05s" cx="250" cy="168" r="7"/>
+          <circle class="blob" style="--d:2.65s" cx="250" cy="134" r="7"/>
+          <circle class="blob" style="--d:3.25s" cx="250" cy="100" r="7"/>
+        </g>
+        <!-- soldering iron: tip rests on pin 1, hops upward pin by pin -->
+        <g class="iron">
+          <g transform="translate(250,270)">
+            <path d="M0 0 L40 -40" stroke="#cfd4d6" stroke-width="5" stroke-linecap="round"/>
+            <path d="M40 -40 L120 -120" stroke="#e08a2c" stroke-width="16" stroke-linecap="round"/>
+            <circle r="4" fill="#ff5a3c"/>
+          </g>
+        </g>
+
+        <!-- adapter -->
+        <g>
+          <rect x="660" y="106" width="170" height="192" rx="8" fill="#1f5c8a" stroke="#2f77ad" stroke-width="2"/>
+          <text x="675" y="136" fill="#eaf4fb" font-size="15">VCC</text>
+          <text x="675" y="184" fill="#eaf4fb" font-size="15">TX</text>
+          <text x="675" y="232" fill="#eaf4fb" font-size="15">RX</text>
+          <text x="675" y="280" fill="#eaf4fb" font-size="15">GND</text>
+          <g fill="#d4a94a"><rect x="650" y="125" width="12" height="10"/><rect x="650" y="173" width="12" height="10"/><rect x="650" y="221" width="12" height="10"/><rect x="650" y="269" width="12" height="10"/></g>
+          <circle class="led" cx="800" cy="130" r="6"/>
+          <text x="745" y="86" text-anchor="middle" fill="var(--fg)" font-size="15">3.3 V USB-to-serial adapter</text>
+          <g class="usb">
+            <rect x="830" y="168" width="52" height="64" rx="3" fill="#c8ced1" stroke="#8a9398"/>
+            <rect x="842" y="182" width="24" height="10" fill="#22282a"/><rect x="842" y="208" width="24" height="10" fill="#22282a"/>
+          </g>
+        </g>
+        <text class="tag pcline" x="880" y="256" text-anchor="end" fill="var(--fg)">USB to the PC</text>
+
+        <!-- wires -->
+        <g>
+          <!-- GND: pin 2 -> GND -->
+          <path class="w" style="--d:0s"   pathLength="1" d="M282 236 C 456 236, 456 274, 636 274" stroke="#aab4b0" stroke-width="10"/>
+          <path class="w" style="--d:0s"   pathLength="1" d="M282 236 C 456 236, 456 274, 636 274" stroke="#0b0d0e" stroke-width="6"/>
+          <!-- gateway TX (pin 3) -> adapter RX -->
+          <path class="w" style="--d:.5s"  pathLength="1" d="M282 202 C 456 202, 456 226, 636 226" stroke="#dfeee6" stroke-width="10"/>
+          <path class="w" style="--d:.5s"  pathLength="1" d="M282 202 C 456 202, 456 226, 636 226" stroke="#2fa36b" stroke-width="6"/>
+          <!-- gateway RX (pin 4) <- adapter TX -->
+          <path class="w" style="--d:1s"   pathLength="1" d="M282 168 C 456 168, 456 178, 636 178" stroke="#f5e3c8" stroke-width="10"/>
+          <path class="w" style="--d:1s"   pathLength="1" d="M282 168 C 456 168, 456 178, 636 178" stroke="#e0902a" stroke-width="6"/>
+          <!-- Dupont housings -->
+          <g class="wend" style="--d:0s" fill="#0b0d0e" stroke="#aab4b0"><rect x="266" y="226" width="18" height="20" rx="2"/><rect x="634" y="264" width="18" height="20" rx="2"/></g>
+          <g class="wend" style="--d:.5s" fill="#2fa36b" stroke="#dfeee6"><rect x="266" y="192" width="18" height="20" rx="2"/><rect x="634" y="216" width="18" height="20" rx="2"/></g>
+          <g class="wend" style="--d:1s" fill="#e0902a" stroke="#f5e3c8"><rect x="266" y="158" width="18" height="20" rx="2"/><rect x="634" y="168" width="18" height="20" rx="2"/></g>
+        </g>
+        <!-- leave-open marks -->
+        <g class="vcc">
+          <text class="tag" x="600" y="126" text-anchor="end" fill="#ff8a80">VCC: unconnected</text>
+          <path d="M640 118 l16 16 M656 118 l-16 16" stroke="#ff8a80" stroke-width="3" stroke-linecap="round"/>
+        </g>
+
+        <!-- terminal -->
+        <g class="term">
+          <rect x="500" y="330" width="380" height="110" rx="8" fill="#0c100f" stroke="#2c3a35"/>
+          <circle cx="518" cy="348" r="4" fill="#3b4a44"/><circle cx="532" cy="348" r="4" fill="#3b4a44"/><circle cx="546" cy="348" r="4" fill="#3b4a44"/>
+          <text x="516" y="382" fill="#9aa5a0" font-size="14">$ picocom --baud 38400 --flow n \</text>
+          <text x="516" y="402" fill="#9aa5a0" font-size="14">    /dev/ttyUSB0</text>
+          <text x="516" y="426" fill="#52e08a" font-size="14">38400 8N1 · no flow control</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="side">
+      <ol class="steps" id="steps"></ol>
+      <div class="ctl">
+        <button type="button" id="prev">Previous</button>
+        <button type="button" id="play" class="go">Pause</button>
+        <button type="button" id="next">Next</button>
+      </div>
+      <p class="note">Simplified diagram, not to scale, for the Lidl Silvercrest. Pin 1 is at the bottom. Adapter pin order varies between models: follow its silkscreen, not the order shown here. The Sengled G4 has a different connector, see <code>0-Hardware/sengled-e39-g8c/</code>.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var STEPS = [
+    { t: "Power off", d: "Unplug the power supply, then open the case. It has no screws: work around the edge with a non-conductive tool to release the eight clips." },
+    { t: "Locate J1", d: "Six pads in a vertical column between the flash and the TYZS4 radio module. Pin 1 is at the bottom. The header is not fitted at the factory." },
+    { t: "Fit the male header", d: "6-pin 2.54 mm male header: the J1 pads are plated through-holes. Push the pins through from the top, tips up, plastic body flat against the board." },
+    { t: "Solder", d: "Flip the board and solder the six pins on the copper side, one at a time, starting with pin 1. Every joint must be solid: an intermittent ground or signal can turn a flash into a difficult recovery." },
+    { t: "Wire it with Dupont cables", d: "Three female-to-female Dupont wires pushed onto the male pins. Pin 2 (GND) to GND, pin 3 (TX) to the adapter RX, pin 4 (RX) to the adapter TX. TX and RX are crossed. Leave pin 1 (3.3 V) and pins 5 and 6 (SWD) unconnected." },
+    { t: "Plug in and open the terminal", d: "3.3 V TTL adapter only (not RS-232, not 5 V). It does not power the gateway. Terminal at 38400 baud, 8N1, no flow control." }
+  ];
+  var DWELL = [4200, 4200, 4200, 6000, 5200, 6000];
+  var svg = document.getElementById("scene");
+  var list = document.getElementById("steps");
+  var playBtn = document.getElementById("play");
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var cur = 0, timer = null, playing = !reduce;
+
+  STEPS.forEach(function (s, i) {
+    var li = document.createElement("li");
+    var b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = '<span class="n">' + (i + 1) + '</span><span><span class="t">' + s.t + '</span><span class="d" style="display:block"></span></span>';
+    b.querySelector(".d").textContent = s.d;
+    b.addEventListener("click", function () { pause(); show(i); });
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+
+  function show(i) {
+    cur = (i + STEPS.length) % STEPS.length;
+    for (var k = 1; k <= STEPS.length; k++) {
+      svg.classList.toggle("r" + k, cur + 1 >= k);
+      svg.classList.toggle("c" + k, cur + 1 === k);
+    }
+    Array.prototype.forEach.call(list.children, function (li, j) { li.classList.toggle("on", j === cur); });
+  }
+  function schedule() {
+    clearTimeout(timer);
+    if (!playing) return;
+    timer = setTimeout(function () {
+      if (cur === STEPS.length - 1) { timer = setTimeout(function () { show(0); schedule(); }, 1500); return; }
+      show(cur + 1); schedule();
+    }, DWELL[cur]);
+  }
+  function pause() { playing = false; clearTimeout(timer); playBtn.textContent = "Play"; }
+  function play() { playing = true; playBtn.textContent = "Pause"; schedule(); }
+
+  document.getElementById("prev").addEventListener("click", function () { pause(); show(cur - 1); });
+  document.getElementById("next").addEventListener("click", function () { pause(); show(cur + 1); });
+  playBtn.addEventListener("click", function () { playing ? pause() : play(); });
+
+  playBtn.textContent = playing ? "Pause" : "Play";
+  requestAnimationFrame(function () { requestAnimationFrame(function () { show(0); if (playing) schedule(); }); });
+})();
+</script>

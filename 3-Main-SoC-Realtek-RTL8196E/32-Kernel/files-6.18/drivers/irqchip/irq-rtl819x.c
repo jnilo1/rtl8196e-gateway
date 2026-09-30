@@ -33,8 +33,8 @@
 #define DRV_VERSION "1.2"
 
 /*
- * Dispatch statistics consumed by the rtl819x watchdog (1 Hz flight recorder
- * + panic record v8) — see rtl819x_intc_stats.h for the issue #99 rationale
+ * Dispatch statistics, no longer read in-tree since the rtl819x watchdog
+ * dropped its INTC snapshots — see rtl819x_intc_stats.h for the rationale
  * and for the exact semantics of every field. Two of them are easy to
  * over-read and are documented there at length: `empty` is an ambiguous empty
  * chained entry rather than proof of a storm, and count[TC0] is incidental
@@ -425,7 +425,7 @@ static int __init intc_of_init(struct device_node *node, struct device_node *par
 	 * and never goes through this irqdomain's .irq_unmask path. Yet
 	 * the only hardware path TC0 -> CPU is via INTC IRR1 + GIMR (no
 	 * dedicated bypass — the bootloader, which routes TC0 to IP4 via
-	 * IRR1 and arms GIMR bit 8 in monitor.c:163/190 + irq.c:39, is
+	 * IRR1 and arms GIMR bit 8 in timer_init() (boot/timer.c), is
 	 * the reference). Leaving GIMR bit 8 cleared here would keep IP7
 	 * permanently silent and hang the kernel at clocksource init.
 	 */

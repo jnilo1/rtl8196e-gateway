@@ -267,6 +267,11 @@ if ! python3 -c "import venv" 2>/dev/null; then
     echo "Install it with: sudo apt install python3-venv" >&2
     exit 1
 fi
+if ! command -v patch >/dev/null 2>&1; then
+    echo "Error: patch not found (needed to patch the pinned universal-silabs-flasher)." >&2
+    echo "Install it with: sudo apt install patch" >&2
+    exit 1
+fi
 if [ -n "${SSH_PASSWORD:-}" ] && ! command -v sshpass >/dev/null 2>&1; then
     echo "Error: SSH_PASSWORD is set but sshpass is not installed." >&2
     echo "Install it with: sudo apt install sshpass" >&2

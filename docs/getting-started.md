@@ -72,9 +72,9 @@ You need:
 - the gateway and its normal power supply;
 - an Ethernet cable connected to the same local network as the computer;
 - a USB-to-UART adapter with **3.3 V TTL logic**;
-- three female jumper wires;
-- a way to make reliable contact with the unpopulated J1 header — normally a
-  soldered 2.54 mm pin header, although suitable test hooks can also work;
+- three female-to-female Dupont jumper wires;
+- a 6-pin 2.54 mm male pin header, soldered into the unpopulated J1 holes (test
+  hooks can also work if they make reliable contact), plus soldering tools;
 - tools to open the screwless case without shorting or damaging the PCB.
 
 An RS-232 adapter is electrically incompatible. Do not use a 5 V UART adapter.
@@ -223,7 +223,9 @@ Entering the bootloader and reading flash do not modify it.
 ### Lidl Silvercrest / Tuya
 
 Disconnect the normal power supply before opening the case or changing any
-wire. The Lidl case has no screws; eight plastic clips hold its edges.
+wire. The Lidl case has no screws; eight plastic clips hold its edges and the
+seam is glued, so follow the [step-by-step non-destructive opening
+procedure](../0-Hardware/README.md#open-the-case) rather than forcing a corner.
 
 The cyan rectangle in the existing PCB photo marks the vertical J1 connector:
 
@@ -244,6 +246,12 @@ documented board orientation.
 TX and RX are crossed because each device's transmitter connects to the other
 device's receiver. Power the gateway only with its normal supply. More board
 details are available in the [Lidl hardware reference](../0-Hardware/README.md).
+
+The animation below shows the whole sequence: fitting and soldering the male
+header, then wiring the adapter with Dupont cables. It is also available
+[as a standalone page](https://jnilo1.github.io/rtl8196e-gateway/0-Hardware/media/j1-serial-hookup.html).
+
+<iframe src="../../0-Hardware/media/j1-serial-hookup.html" title="Animation: soldering the J1 pin header and wiring the USB serial adapter" width="100%" height="1400" style="border:1px solid var(--md-default-fg-color--lightest); border-radius:6px;" loading="lazy"></iframe>
 
 ### Sengled Smart Hub G4
 

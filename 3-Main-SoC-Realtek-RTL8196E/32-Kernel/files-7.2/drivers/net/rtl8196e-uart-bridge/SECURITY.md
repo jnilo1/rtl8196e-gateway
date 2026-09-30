@@ -1,7 +1,7 @@
 # Hardening the UART bridge with an SSH tunnel
 
 The in-kernel `rtl8196e-uart-bridge` driver exposes the UART link to the
-EFR32 Zigbee NCP as a raw TCP listener (default: `0.0.0.0:8888`, no
+EFR32 radio (NCP, RCP or OT-RCP traffic) as a raw TCP listener (default: `0.0.0.0:8888`, no
 authentication, no encryption). On a trusted home LAN this is usually
 acceptable; on any segment shared with untrusted peers it is not. This
 note describes the recommended hardening path: keep the bridge bound to
@@ -355,12 +355,11 @@ docker logs zigbee2mqtt | grep -E 'ASH started|Network up'
 | `autossh` dies immediately with "ssh_exchange_identification" | Dropbear not yet up on gateway | autossh retries in 5 s (systemd Restart=always); no action needed |
 | `Z2M: Error: connect ECONNREFUSED 127.0.0.1:8888` | Tunnel down at the moment Z2M connected | autossh will re-establish; Z2M will retry on its own (docker restart policy unless-stopped) |
 | `autossh: WARNING: unknown host key` | Gateway host key changed (reflash, JFFS2 wipe) | Verify gateway fingerprint out of band, then `ssh-keygen -R gateway` on host; restart tunnel service |
-| High CPU on the gateway while traffic flows | Expected overhead of ChaCha20-Poly1305 | Typically < 1% on Lexra 400 MHz at NCP 115200 baud; <5% at 892857 baud |
-| Tunnel stays up but Z2M times out | SSH keepalive masks a broken bridge | Reduce `ServerAliveInterval` to 5, `ServerAliveCountMax=1`; still prefer loosing the tunnel over silently forwarding a dead socket |
+| High CPU on the gateway while traffic flows | Expected overhead of ChaCha20-Poly1305 | Not measured here; check with `top` on the gateway |
+| Tunnel stays up but Z2M times out | SSH keepalive masks a broken bridge | Reduce `ServerAliveInterval` to 5, `ServerAliveCountMax=1`; still prefer losing the tunnel over silently forwarding a dead socket |
 
-For deep diagnostics, run the tunnel with `-vv` on the host and watch
-`journalctl -u dropbear` (not supported on BusyBox — tail
-`/var/log/messages` instead) on the gateway.
+For deep diagnostics, run the tunnel with `-vv` on the host and tail
+`/var/log/messages` on the gateway.
 
 ---
 
@@ -378,5 +377,4 @@ For deep diagnostics, run the tunnel with `-vv` on the host and watch
   connections between host and gateway on port 22. Only the bytes
   flowing are confidential.
 
-This document complements `DESIGN.md` (driver rationale) and lives
-alongside the driver source for easy discovery by future maintainers.
+This document complements `DESIGN.md` (driver rationale).
