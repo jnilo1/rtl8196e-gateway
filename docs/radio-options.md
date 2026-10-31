@@ -19,6 +19,8 @@ the [first installation guide](./getting-started.md#sengled-g4-only-install-the-
 - Want to experiment with **same-channel Zigbee + Thread** on a Lidl gateway?
   Choose the RCP multi-PAN stack.
 - Want a **Thread Border Router**? Choose **OT-RCP**.
+- Want **Zigbee and Thread on separate radios and channels**, keeping the NCP
+  untouched? See the [second-radio option](#second-radio-esp32-h2-on-the-console-uart).
 - Want this box to extend an existing Zigbee mesh, without acting as a
   coordinator? Choose **Router**.
 
@@ -103,6 +105,22 @@ Thread uses IID 2, and IID 0 is broadcast. Both networks must use the same
 requires Series 2 Concurrent Listening. Current validation is limited to a
 short same-channel test without a real Thread device; see the
 [multi-PAN guide](../2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed-otbr/README.md).
+
+### Second radio: ESP32-H2 on the console UART
+
+A community alternative keeps the EFR32 as an NCP Zigbee coordinator and adds a
+dedicated Thread radio. [SysAdminDk's guide](https://github.com/SysAdminDk/HomeAssistant/blob/main/rtl8196e-gateway/readme.md)
+frees the console UART (J1), wires an ESP32-H2 running OpenThread RCP firmware
+to it, and runs a second instance of the in-kernel UART bridge so that an
+external OTBR (the Home Assistant add-on) reaches the H2 over TCP. The two
+networks get independent radios and channels, and the existing Zigbee network
+is not migrated. Validated with IKEA Matter-over-Thread devices, including a
+Matter OTA update over Thread (see
+[discussion #170](https://github.com/jnilo1/rtl8196e-gateway/discussions/170)).
+
+The trade-offs: the serial console is no longer available for recovery, the
+kernel must be rebuilt with the duplicated driver, and the patch set needs
+rechecking at each kernel bump.
 
 ## OT-RCP: Thread or Zigbee-on-Host
 
