@@ -11,7 +11,7 @@
 | **Last fully audited baseline** | v2.23 |
 | **Post-baseline changes** | v2.24: board-aware true LAN LED off (ETHDRV-016); no datapath change |
 | **Validation state** | A2 hardening bench/field evidence plus A3 static revalidation; A4 true-off mechanism visually validated on Lidl and compiled for both boards and both kernel lines; Sengled G4 not yet visually checked |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical driver source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical driver source |
 | **Current finding registry** | §4 |
 | **Audited surface** | driver sources/headers, Kconfig/Makefile, DT/config, DMA/cache/ring lifecycle and privileged controls |
 

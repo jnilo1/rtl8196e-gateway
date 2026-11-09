@@ -30,7 +30,7 @@ NCP is the recommended default for new users.
 
 | Mode | Main use | Where the protocol stack runs | Client connection | Knowledge level |
 | --- | --- | --- | --- | --- |
-| **NCP** | Zigbee2MQTT or ZHA coordinator | EFR32, EmberZNet 7.5.1 / EZSP v13 | Directly to gateway TCP:8888 | Beginner |
+| **NCP** | Zigbee2MQTT or ZHA coordinator | EFR32, EmberZNet 7.5.2 / EZSP v13 | Directly to gateway TCP:8888 | Beginner |
 | **RCP** | Modern host-side Zigbee; experimental same-channel Zigbee + Thread on Lidl | `cpcd` + host stacks, EmberZNet 8.2.2 / EZSP v18 | Client connects to `zigbeed`, not directly to the RCP | Advanced |
 | **OT-RCP** | Thread/Matter or Zigbee-on-Host | OpenThread or Zigbee stack on gateway/external host | Depends on selected host stack | Intermediate to advanced |
 | **Router** | Extend an existing Zigbee mesh | Entire router application on EFR32 | No coordinator client | Intermediate |

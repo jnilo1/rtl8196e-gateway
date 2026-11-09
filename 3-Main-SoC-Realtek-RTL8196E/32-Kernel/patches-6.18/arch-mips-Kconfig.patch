@@ -11,7 +11,7 @@
  	select HAVE_PERF_EVENTS
  	select HAVE_PERF_REGS
  	select HAVE_PERF_USER_STACK_DUMP
-@@ -693,6 +693,29 @@
+@@ -694,6 +694,29 @@
  	select SYS_HAS_EARLY_PRINTK
  	select ARCH_HAS_RESET_CONTROLLER
  	select RESET_CONTROLLER
@@ -41,7 +41,7 @@
  
  config MACH_REALTEK_RTL
  	bool "Realtek RTL838x/RTL839x based machines"
-@@ -1070,6 +1093,7 @@
+@@ -1071,6 +1094,7 @@
  source "arch/mips/mobileye/Kconfig"
  source "arch/mips/pic32/Kconfig"
  source "arch/mips/ralink/Kconfig"
@@ -49,7 +49,7 @@
  source "arch/mips/sgi-ip27/Kconfig"
  source "arch/mips/sibyte/Kconfig"
  source "arch/mips/txx9/Kconfig"
-@@ -1583,6 +1607,13 @@
+@@ -1584,6 +1608,13 @@
  	  of the supported machines have an R4000 (or similar) CPU, R4x00
  	  might be a safe bet.  If the resulting kernel does not work,
  	  try to recompile with R3000.
@@ -63,7 +63,7 @@
  
  config CPU_R4300
  	bool "R4300"
-@@ -1933,6 +1964,9 @@
+@@ -1934,6 +1965,9 @@
  
  config SYS_HAS_CPU_R5000
  	bool
@@ -73,7 +73,7 @@
  
  config SYS_HAS_CPU_R5500
  	bool
-@@ -2175,7 +2209,7 @@
+@@ -2176,7 +2210,7 @@
  
  config CPU_GENERIC_DUMP_TLB
  	bool
@@ -82,7 +82,7 @@
  
  config MIPS_FP_SUPPORT
  	bool "Floating Point support" if EXPERT
-@@ -2203,11 +2237,11 @@
+@@ -2204,11 +2238,11 @@
  config CPU_R4K_FPU
  	bool
  	depends on MIPS_FP_SUPPORT
@@ -96,7 +96,7 @@
  
  config MIPS_MT_SMP
  	bool "MIPS MT SMP support (1 TC on each available VPE)"
-@@ -2419,7 +2453,7 @@
+@@ -2420,7 +2454,7 @@
  
  config CPU_HAS_SYNC
  	bool
@@ -105,7 +105,7 @@
  	default y
  
  #
-@@ -2479,13 +2513,13 @@
+@@ -2480,13 +2514,13 @@
  
  config MIPS_ASID_SHIFT
  	int

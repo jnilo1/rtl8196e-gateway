@@ -12,7 +12,7 @@
 | **Last fully audited baseline** | v1.2 (A2) |
 | **Post-baseline changes** | v1.3 preserves the data path and improves syscon error fidelity, including `-EPROBE_DEFER`; reviewed in A3 |
 | **Validation state** | v1.2 target gate passed; v1.3 independent review found no security/runtime defect |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | §4 |
 | **Audited surface** | driver, GPIO DT consumers/config, and cross-driver `PIN_MUX_SEL_2` writers |
 

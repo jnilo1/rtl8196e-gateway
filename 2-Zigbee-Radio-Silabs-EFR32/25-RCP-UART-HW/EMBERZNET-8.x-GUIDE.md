@@ -30,18 +30,18 @@ In RCP mode the EFR32 only handles the 802.15.4 PHY/MAC layer and speaks the
 **CPC** protocol. The Zigbee stack runs on the host as **zigbeed**, which
 reaches the radio through the CPC daemon **cpcd**.
 
-The key fact: the RCP firmware built from **Gecko SDK 4.5.0** (CPC protocol v5)
+The key fact: the RCP firmware built from **Gecko SDK 4.5** (CPC protocol v5)
 is accepted by **zigbeed from Simplicity SDK 2025.6.3**, which runs
 **EmberZNet 8.2.2**. The radio image contains no Zigbee stack at all — only
 the 802.15.4 layer — so the Series 1 cut-off, which concerns stacks running on
 the chip, never reaches it. This pairing is an observed compatibility, checked
-on the Lidl gateway (EZSP 18 network up), not one Silicon Labs documents for
-Series 1.
+on the Lidl gateway (EZSP 18 network up) with the Gecko SDK 4.5.0 image, not one
+Silicon Labs documents for Series 1. The 4.5.1 image keeps CPC protocol v5.
 
 ```
- EFR32 (RCP, GSDK 4.5.0)   Gateway (RTL8196E)         Host
+ EFR32 (RCP, GSDK 4.5.1)   Gateway (RTL8196E)         Host
 +------------------+ UART +-------------------+ TCP  +----------------------------------------+
-| 802.15.4 PHY/MAC |<---->| in-kernel         |<---->| cpcd 4.5.3                             |
+| 802.15.4 PHY/MAC |<---->| in-kernel         |<---->| cpcd 4.6.2                             |
 | CPC protocol v5  |      | UART<->TCP bridge | 8888 | '- zigbeed (EmberZNet 8.2.2)           |
 |                  |      |                   |      |      '- TCP 9999 -> Zigbee2MQTT / ZHA  |
 +------------------+      +-------------------+      +----------------------------------------+

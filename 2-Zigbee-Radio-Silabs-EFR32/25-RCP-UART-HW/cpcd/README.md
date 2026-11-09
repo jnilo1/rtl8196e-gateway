@@ -1,6 +1,6 @@
 # cpcd - CPC Daemon
 
-Build script for cpcd v4.5.3 from Silicon Labs.
+Build script for cpcd v4.6.2 from Silicon Labs.
 Portable: works on x86_64, ARM64 (Raspberry Pi 4/5), etc.
 
 ## Prerequisites

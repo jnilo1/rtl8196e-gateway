@@ -11,7 +11,7 @@
 | **Last fully audited baseline** | v1.12 |
 | **Post-baseline changes** | none |
 | **Validation state** | build passed; 2026-07-30 target panic/reset/one-shot test passed 10/10 |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | findings closed, legacy IDs and residual constraints below |
 | **DT dependency** | dedicated `watchdog-crash@1ffd000`, `no-map` |
 | **Public interface** | standard root-owned Linux watchdog interface |

@@ -154,8 +154,22 @@ RUN arm-none-eabi-gcc --version
 # ============================================================================
 # Step 6: Install slc-cli (Silicon Labs CLI)
 # ============================================================================
-RUN cd /home/builder && \
-    wget -q -O slc_cli.zip "https://www.silabs.com/documents/public/software/slc_cli_linux.zip" && \
+# silabs.com answers 403 to command-line clients (since 2026-10-22). An archive
+# saved by hand in 12-silabs-toolchain/downloads/ is used instead of the
+# download (see the README there). It is bind-mounted for this step only, so it
+# never lands in an image layer.
+RUN --mount=type=bind,source=12-silabs-toolchain/downloads,target=/tmp/silabs-downloads \
+    cd /home/builder && \
+    if [ -f /tmp/silabs-downloads/slc_cli_linux.zip ]; then \
+        echo "Using 12-silabs-toolchain/downloads/slc_cli_linux.zip" && \
+        cp /tmp/silabs-downloads/slc_cli_linux.zip slc_cli.zip; \
+    else \
+        wget -q -O slc_cli.zip "https://www.silabs.com/documents/public/software/slc_cli_linux.zip" || { \
+            echo "ERROR: could not download slc_cli_linux.zip; silabs.com may refuse command-line downloads."; \
+            echo "Open https://www.silabs.com/documents/public/software/slc_cli_linux.zip in a browser,"; \
+            echo "save it as 1-Build-Environment/12-silabs-toolchain/downloads/slc_cli_linux.zip, and rebuild."; \
+            exit 1; }; \
+    fi && \
     unzip -q slc_cli.zip && \
     rm slc_cli.zip && \
     chmod +x slc_cli/slc
@@ -168,11 +182,22 @@ RUN slc --version
 # ============================================================================
 # Step 7: Install Simplicity Commander (for .gbl generation)
 # ============================================================================
-RUN cd /home/builder && \
-    wget -q -O commander.tar.bz "https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip" && \
-    unzip -q commander.tar.bz && \
+# Same hand-download fallback as slc-cli above.
+RUN --mount=type=bind,source=12-silabs-toolchain/downloads,target=/tmp/silabs-downloads \
+    cd /home/builder && \
+    if [ -f /tmp/silabs-downloads/SimplicityCommander-Linux.zip ]; then \
+        echo "Using 12-silabs-toolchain/downloads/SimplicityCommander-Linux.zip" && \
+        cp /tmp/silabs-downloads/SimplicityCommander-Linux.zip commander.zip; \
+    else \
+        wget -q -O commander.zip "https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip" || { \
+            echo "ERROR: could not download SimplicityCommander-Linux.zip; silabs.com may refuse command-line downloads."; \
+            echo "Open https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip in a browser,"; \
+            echo "save it as 1-Build-Environment/12-silabs-toolchain/downloads/SimplicityCommander-Linux.zip, and rebuild."; \
+            exit 1; }; \
+    fi && \
+    unzip -q commander.zip && \
     tar xf SimplicityCommander-Linux/Commander_linux_x86_64_*.tar.bz -C . && \
-    rm -rf commander.tar.bz SimplicityCommander-Linux
+    rm -rf commander.zip SimplicityCommander-Linux
 
 ENV PATH="/home/builder/commander:${PATH}"
 
@@ -183,7 +208,7 @@ RUN commander --version
 # Step 8: Install Gecko SDK (from GitHub)
 # ============================================================================
 # Version fixed for reproducibility (must match install_silabs.sh)
-ENV GECKO_SDK_VERSION="4.5.0"
+ENV GECKO_SDK_VERSION="4.5.1"
 
 RUN git lfs install && \
     cd /home/builder && \

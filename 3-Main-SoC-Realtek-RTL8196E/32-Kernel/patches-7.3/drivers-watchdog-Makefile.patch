@@ -1,0 +1,10 @@
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -185,6 +185,7 @@
+ obj-$(CONFIG_PIC32_WDT) += pic32-wdt.o
+ obj-$(CONFIG_PIC32_DMT) += pic32-dmt.o
+ obj-$(CONFIG_REALTEK_OTTO_WDT) += realtek_otto_wdt.o
++obj-$(CONFIG_RTL819X_WDT) += rtl819x_wdt.o
+ 
+ # PARISC Architecture
+ 

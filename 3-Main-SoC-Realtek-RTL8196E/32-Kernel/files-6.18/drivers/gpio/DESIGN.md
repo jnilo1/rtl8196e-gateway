@@ -4,7 +4,7 @@
 |---|---|
 | **Document date** | 2026-06-11 (updated 2026-06-12: eth v2.7 closes GPIO-007; v1.2 generic-chip conversion) |
 | **Driver version** | 1.3 (`DRV_VERSION` in `gpio-rtl819x.c`) |
-| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
+| **Active release** | v4.8.0 (kernels `6.18.62` and `7.3.3`, `-rtl8196e-v4.8.0`) |
 
 Architecture reference for the SoC GPIO bank driver. Findings and audit
 history live in `AUDIT.md` (this directory).

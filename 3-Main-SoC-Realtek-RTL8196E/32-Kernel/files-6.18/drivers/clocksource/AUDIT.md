@@ -12,7 +12,7 @@
 | **Last fully audited baseline** | v1.3 |
 | **Post-baseline changes** | none |
 | **Validation state** | build and DNT feasibility/soak passed; DNT (`CONFIG_RTL819X_TC0_DNT=y`) has shipped in every image since v4.0.0 |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | `Disposition` below |
 | **Scope** | Timer0 clockevent, Timer1 clocksource, DT/config/IRQ/watchdog coupling |
 

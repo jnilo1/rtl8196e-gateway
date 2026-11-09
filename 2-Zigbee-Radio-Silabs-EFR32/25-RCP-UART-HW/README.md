@@ -4,7 +4,7 @@ This directory turns the gateway's EFR32 into a **Radio Co-Processor (RCP)** and
 provides the host software that runs the protocol stacks on a PC or Raspberry Pi:
 
 - **Zigbee with EmberZNet 8.2.2 / EZSP v18**, although Silicon Labs stopped
-  shipping on-chip stacks for this Series 1 chip at EmberZNet 7.5.1;
+  shipping on-chip stacks for this Series 1 chip at EmberZNet 7.5.x;
 - **experimental same-channel Zigbee + Thread** (multi-PAN) on the same radio.
 
 The EFR32 only handles the 802.15.4 radio. The gateway forwards its UART to
@@ -130,7 +130,7 @@ Ethernet, and avoid Wi-Fi bridges and congested switches between them.
 |---|---|
 | Flash fails or times out | `nc -zv <gateway-ip> 8888`; close other clients of port 8888 first (it accepts one) |
 | `cpcd` does not connect | `tcp_server_address` / `tcp_server_port` in `cpcd.conf` (Docker: `RCP_HOST`) point at the gateway |
-| `cpcd` reports a protocol mismatch | the RCP image is built from GSDK 4.5.0 (CPC protocol v5); reflash it with `flash_efr32.sh` |
+| `cpcd` reports a protocol mismatch | the RCP image is built from GSDK 4.5.1 (CPC protocol v5); reflash it with `flash_efr32.sh` |
 | Frequent disconnects | wired Ethernet, no Wi-Fi bridge |
 | `zigbeed` does not start | `cpcd` must be up first: `rcp-stack status`, or the `cpcd-zigbeed` container logs |
 
@@ -148,13 +148,13 @@ Most users never need this — the firmware and the Docker image are prebuilt.
   The UART pins, the 1-second boot delay for the gateway and the disabled CPC
   security (saves ~45 KB of flash) live in `patches/`. `BOARD=` selects the
   target board.
-- **cpcd:** [`cpcd/`](./cpcd/README.md) — cpc-daemon 4.5.3 plus the
+- **cpcd:** [`cpcd/`](./cpcd/README.md) — cpc-daemon 4.6.2 plus the
   native TCP bus patch.
 - **zigbeed:** [`zigbeed/`](./zigbeed/README.md) — Simplicity SDK 2025.6.3,
   with the project's PTY / TCP transport.
 - **Docker image:** `docker/cpcd-zigbeed/Dockerfile.multiarch`, built by CI.
 
-Why a GSDK 4.5.0 radio image works with an EmberZNet 8.2.2 host stack is
+Why a GSDK 4.5 radio image works with an EmberZNet 8.2.2 host stack is
 explained in [`EMBERZNET-8.x-GUIDE.md`](./EMBERZNET-8.x-GUIDE.md).
 
 ## Directory layout

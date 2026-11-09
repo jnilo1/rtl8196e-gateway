@@ -123,12 +123,38 @@ ghcr.io/jnilo1/cpcd-zigbeed:latest
 
 | Tag | cpcd | EmberZNet | EZSP |
 |-----|------|-----------|------|
-| `latest`, `cpcd4.5.3-ezsp18` | 4.5.3 | 8.2.2 | v18 |
-| `<release>` (e.g. `4.5.2`) | 4.5.3 | 8.2.2 | v18 |
+| `latest`, `cpcd4.6.2-ezsp18` | 4.6.2 | 8.2.2 | v18 |
+| `cpcd4.5.3-ezsp18` (frozen) | 4.5.3 | 8.2.2 | v18 |
+| `<release>` (e.g. `4.5.2`) | as built for that release | 8.2.2 | v18 |
 
-`latest` and `cpcd4.5.3-ezsp18` follow the latest release that changed the
-image; the release tags are immutable. A release that leaves the image alone
-publishes no new tag: use the most recent one.
+`latest` and the component tag of the current cpcd (`cpcd<version>-ezsp18`)
+follow the latest release that changed the image; the release tags are
+immutable. A release that leaves the image alone publishes no new tag: use the
+most recent one. When cpcd moves to a new version, the CI publishes a new
+component tag and stops updating the previous one, which keeps its last build:
+`cpcd4.5.3-ezsp18` stays on the last cpcd 4.5.3 image, so a compose file pinned
+to it keeps working unchanged.
+
+### Building the image yourself
+
+The build runs Silicon Labs' `slc-cli` to generate the zigbeed makefiles. Since
+2026-10-22 silabs.com refuses command-line downloads (`403 Forbidden`), so the
+Dockerfile cannot fetch it on its own. Download
+[`slc_cli_linux.zip`](https://www.silabs.com/documents/public/software/slc_cli_linux.zip)
+in a browser, put it alone in a folder, and pass that folder as the `slc_cli`
+build context. From `2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/`:
+
+```bash
+docker buildx build --platform linux/amd64 \
+  --build-context slc_cli=/path/to/folder-with-slc_cli_linux.zip \
+  -f docker/cpcd-zigbeed/Dockerfile.multiarch \
+  -t cpcd-zigbeed:local --load .
+```
+
+The archive is read during the build only: slc-cli is unpacked, used and deleted
+within one build step, so it ends up in no image layer and in no build cache.
+Without `--build-context`, the Dockerfile tries the silabs.com download and stops
+with a message explaining the above if it is refused.
 
 ### Services
 

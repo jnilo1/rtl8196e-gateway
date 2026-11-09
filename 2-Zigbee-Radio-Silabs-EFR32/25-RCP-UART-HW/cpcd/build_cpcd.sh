@@ -18,9 +18,9 @@ prepare_cmake() {
     cat << 'EOF' > cmakeLists.patch
 --- CMakeLists.txt
 +++ CMakeLists.txt
-@@ -166,12 +166,19 @@
- ###
-
+@@ -185,11 +185,18 @@
+ endif()
+ 
  install(TARGETS cpc
 +  COMPONENT development
    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -31,7 +31,6 @@ prepare_cmake() {
 +install(FILES "${PROJECT_BINARY_DIR}/libcpc.pc"
 +  COMPONENT development
    DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-
  install(TARGETS cpcd
 +  COMPONENT runtime
    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
@@ -90,7 +89,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CPCD_SRC="${SCRIPT_DIR}/cpc-daemon"
 
 CPCD_REPO="https://github.com/SiliconLabs/cpc-daemon.git"
-CPCD_VERSION="v4.5.3"
+CPCD_VERSION="v4.6.2"
 
 REPO_OWNER=$(git remote get-url origin 2>/dev/null | sed -E 's/.*[:\/](.*)\/.*\..*/\1/') || true
 REPO_OWNER="${REPO_OWNER:-unknown}"

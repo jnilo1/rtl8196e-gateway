@@ -49,6 +49,33 @@ not for `pkgrel` movement.
 
 ---
 
+## [4.8.0] - 2026-11-09
+
+_Toolchain unchanged (crosstool-NG 1.28.0, binutils 2.45.1, GCC 15.2.0, musl 1.2.6, Linux
+headers 6.16)._
+
+### Gecko SDK 4.5.0 → 4.5.1
+
+`install_silabs.sh` and the `Dockerfile` now fetch Gecko SDK 4.5.1 (EmberZNet
+7.5.2), the latest release for Series 1. The firmware side of the change is in
+`2-Zigbee-Radio-Silabs-EFR32/CHANGELOG.md`. An existing `silabs-tools/gecko_sdk/` is
+not replaced by a rerun of the installer: move it aside first.
+
+### Silicon Labs tools can be supplied by hand when silabs.com refuses the download
+
+Since 2026-10-22 silabs.com answers `403 Forbidden` to `wget` and `curl` while a
+web browser still gets the files, so the native installer and the Docker build
+both stopped at `slc-cli`. Download `slc_cli_linux.zip` and
+`SimplicityCommander-Linux.zip` in a browser, save them in
+`12-silabs-toolchain/downloads/`, and run the same command again: both paths use a
+file found there instead of downloading it. When neither works, the error now
+names the file, the link to open, and where to save it, instead of a bare
+"Failed to download". The Docker build reads the folder through a build-time
+mount, so the archives are not copied into an image layer; they are not tracked
+by git either. Nothing changes when the download succeeds.
+
+---
+
 ## [4.3.0] - 2026-09-03
 
 _Toolchain unchanged (crosstool-NG 1.28.0, binutils 2.45.1, GCC 15.2.0, musl 1.2.6, Linux

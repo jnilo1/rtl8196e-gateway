@@ -11,7 +11,7 @@
 | **Last fully audited baseline** | v1.7 |
 | **Post-baseline changes** | none |
 | **Validation state** | both kernel lines built; hardware non-regression and LOOP-rig load/throttle stress passed (§5); wire-true RTS backpressure and a multi-day endurance campaign were not run (§5.4) |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical driver source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical driver source |
 | **Scope** | driver, 8250/serial-core contracts, Kconfig/Makefile, DT, IRQ and flow-control paths |
 | **Companion** | `DESIGN.md` |
 

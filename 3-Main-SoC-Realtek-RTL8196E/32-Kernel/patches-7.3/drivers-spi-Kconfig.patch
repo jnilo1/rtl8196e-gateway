@@ -1,0 +1,14 @@
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -912,6 +912,11 @@
+ 
+ config SPI_PXA2XX_PCI
+ 	def_tristate SPI_PXA2XX && PCI && COMMON_CLK
++	
++config SPI_RTL819X
++	tristate "Realtek RTL819X SPI controller driver"
++	help
++	  This selects a driver for Realtek RTL819X SoCs (RTL8196E, etc.)
+ 
+ config SPI_REALTEK_SNAND
+ 	tristate "Realtek SPI-NAND Flash Controller"

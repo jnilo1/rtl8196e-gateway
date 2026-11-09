@@ -1,5 +1,5 @@
 # Cloned source repositories
-cpcd/cpc-daemon/
+cpcd/cpc-daemon*/
 zigbeed/simplicity_sdk/
 
 # Work in progress (not ready for release)

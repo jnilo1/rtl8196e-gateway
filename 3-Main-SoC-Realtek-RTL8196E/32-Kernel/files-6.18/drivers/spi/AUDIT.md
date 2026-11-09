@@ -12,7 +12,7 @@
 | **Last fully audited baseline** | v1.2 |
 | **Post-baseline changes** | none |
 | **Validation state** | full builds and `W=1` passed; target smoke passed (V1); the full storage gate was passed by v1.1 (A1); v1.2's storage gate was not run as a separate gate; the driver has shipped since v4.0.0 |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | §4 |
 | **Scope** | driver, SPI-core contracts, Kconfig/Makefile, DT controller/NOR consumer and storage integrity |
 | **Companion** | `DESIGN.md` |

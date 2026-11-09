@@ -1,4 +1,4 @@
-# Linux Kernel for RTL8196E (6.18 + 7.2)
+# Linux Kernel for RTL8196E (6.18 + 7.3)
 
 This directory contains everything needed to build a modern Linux kernel for the Realtek RTL8196E gateway.
 
@@ -7,8 +7,8 @@ This directory contains everything needed to build a modern Linux kernel for the
 
 | `KERNEL` | Version | Sources |
 |----------|---------|---------|
-| `6.18` *(default)* | [Linux 6.18.54](https://cdn.kernel.org/pub/linux/kernel/v6.x/) — stable 6.18.x LTS family | `patches-6.18/`, `files-6.18/`, `config-6.18-realtek.txt` |
-| `7.2` | [Linux 7.2.8](https://cdn.kernel.org/pub/linux/kernel/v7.x/) | `patches-7.2/`, `files-7.2/`, `config-7.2-realtek.txt` |
+| `6.18` *(default)* | [Linux 6.18.62](https://cdn.kernel.org/pub/linux/kernel/v6.x/) — stable 6.18.x LTS family | `patches-6.18/`, `files-6.18/`, `config-6.18-realtek.txt` |
+| `7.3` | [Linux 7.3.3](https://cdn.kernel.org/pub/linux/kernel/v7.x/) | `patches-7.3/`, `files-7.3/`, `config-7.3-realtek.txt` |
 
 The two lines coexist — each has its own patch/overlay/config triplet and its own pre-built
 images. A Lidl user who sets nothing builds and flashes the `6.18` line exactly as before.
@@ -36,9 +36,9 @@ The result is a clean, maintainable kernel that can be updated to newer 6.18.x p
 
 | Directory/File | Description |
 |----------------|-------------|
-| [`patches-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18) · `patches-7.2/` | Patches to apply on vanilla Linux 6.18 / 7.2 |
-| [`files-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/files-6.18) · `files-7.2/` | New files to add to the kernel tree (Realtek platform support, custom drivers) |
-| [`config-6.18-realtek.txt`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/config-6.18-realtek.txt) · `config-7.2-realtek.txt` | Kernel configuration (one per kernel line) |
+| [`patches-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/patches-6.18) · `patches-7.3/` | Patches to apply on vanilla Linux 6.18 / 7.3 |
+| [`files-6.18/`](https://github.com/jnilo1/rtl8196e-gateway/tree/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/files-6.18) · `files-7.3/` | New files to add to the kernel tree (Realtek platform support, custom drivers) |
+| [`config-6.18-realtek.txt`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/config-6.18-realtek.txt) · `config-7.3-realtek.txt` | Kernel configuration (one per kernel line) |
 | `kernel-img/<board>/kernel-<line>.img` | Pre-built flashable images, one per (board, kernel) pair |
 | [`build_kernel.sh`](https://github.com/jnilo1/rtl8196e-gateway/blob/main/3-Main-SoC-Realtek-RTL8196E/32-Kernel/build_kernel.sh) | Build script |
 | [`tools/`](tools/README.md) | Optional on-gateway kernel diagnostic tools |
@@ -47,7 +47,7 @@ The result is a clean, maintainable kernel that can be updated to newer 6.18.x p
 
 ```bash
 ./build_kernel.sh [clean|menuconfig|olddefconfig|vmlinux]   # 6.18 / lidl (defaults)
-KERNEL=7.2 ./build_kernel.sh                                # build the 7.2 line
+KERNEL=7.3 ./build_kernel.sh                                # build the 7.3 line
 BOARD=sengled-e39-g8c ./build_kernel.sh                     # build for the Sengled G4
 ```
 
@@ -69,13 +69,13 @@ the Lidl 6.18 build, and the output lands in `kernel-img/<board>/kernel-<line>.i
 | Variable | Default | Values |
 |----------|---------|--------|
 | `BOARD`  | `lidl`  | `lidl`, `sengled-e39-g8c` (Sengled Smart Hub G4) |
-| `KERNEL` | `6.18`  | `6.18`, `7.2` |
+| `KERNEL` | `6.18`  | `6.18`, `7.3` |
 
 ```bash
 ./build_kernel.sh                                  # lidl / 6.18  → kernel-img/lidl/kernel-6.18.img
-KERNEL=7.2 ./build_kernel.sh                       # lidl / 7.2
+KERNEL=7.3 ./build_kernel.sh                       # lidl / 7.3
 BOARD=sengled-e39-g8c ./build_kernel.sh            # G4 / 6.18
-BOARD=sengled-e39-g8c KERNEL=7.2 ./build_kernel.sh # G4 / 7.2
+BOARD=sengled-e39-g8c KERNEL=7.3 ./build_kernel.sh # G4 / 7.3
 ```
 
 `BOARD` selects the device tree built into the image. Porting to another RTL8196E
@@ -87,14 +87,14 @@ and in the devicetree Kconfig choice (`files-<line>/arch/mips/realtek/Kconfig`).
 
 The script will:
 1. Download the pinned Linux source of the selected line (if not present)
-2. Apply all patches from `patches-<line>/`, then the release's text layout pads when `scripts/imem/layouts/<KERNEL_VERSION>/` exists (none exists for the pinned 6.18.54 and 7.2.8)
+2. Apply all patches from `patches-<line>/`, then the release's text layout pads when `scripts/imem/layouts/<KERNEL_VERSION>/` exists (none exists for the pinned 6.18.62 and 7.3.3)
 3. Overlay Realtek platform files from `files-<line>/`
 4. Compile the kernel
 5. Apply the exact point release's versioned I-MEM policy, when present
 6. Verify its local holes, SRAM budget and runtime-patching safety
 7. Package the compressed kernel image (zboot) into `kernel-img/<board>/kernel-<line>.img`, ready to flash
 
-The shipped 6.18.54 and 7.2.8 policies live under `scripts/imem/policies/`.
+The shipped 6.18.62 and 7.3.3 policies live under `scripts/imem/policies/`.
 `IMEM_POLICY_DISABLE=1` is an experimental escape hatch and requires a clean build tree;
 normal production builds always apply and verify the matching policy. Without a policy
 file for the exact point release, the build uses the historical default I-MEM placement.
@@ -106,7 +106,7 @@ The selection procedure is documented in [`scripts/imem/README.md`](scripts/imem
 
 - `kernel-img/<board>/kernel-<line>.img` — Flashable kernel image with Realtek
   header (~1.4 MB). The four shipped pre-built images are
-  `kernel-img/{lidl,sengled-e39-g8c}/kernel-{6.18,7.2}.img`.
+  `kernel-img/{lidl,sengled-e39-g8c}/kernel-{6.18,7.3}.img`.
 
 ## Technical Details
 
@@ -137,6 +137,6 @@ Those patches (originally for Linux 4.14) were heavily reworked for 5.10, then r
 
 ## 🔗 References
 
-- [Linux 6.18 and 7.2](https://kernel.org/)
+- [Linux 6.18 and 7.3](https://kernel.org/)
 - [I-MEM selection and text layout tools](scripts/imem/README.md)
 - [Lexra processors](https://en.wikipedia.org/wiki/Lexra)

@@ -20,7 +20,7 @@ services:
       retries: 3
 
   cpcd-zigbeed:
-    image: ghcr.io/jnilo1/cpcd-zigbeed:${CPCD_ZIGBEED_TAG:-cpcd4.5.3-ezsp18}
+    image: ghcr.io/jnilo1/cpcd-zigbeed:${CPCD_ZIGBEED_TAG:-cpcd4.6.2-ezsp18}
     environment:
       RCP_HOST: ${RCP_HOST:-192.168.1.88}
       RCP_PORT: "8888"
@@ -47,7 +47,7 @@ services:
       retries: 3
 
   otbr-agent:
-    image: ghcr.io/jnilo1/multipan-otbr:${MULTIPAN_OTBR_TAG:-4.5.2}
+    image: ghcr.io/jnilo1/multipan-otbr:${MULTIPAN_OTBR_TAG:-4.8.0}
     pull_policy: missing
     build:
       context: .

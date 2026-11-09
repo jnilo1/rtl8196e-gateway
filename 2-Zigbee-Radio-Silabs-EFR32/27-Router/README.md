@@ -68,7 +68,7 @@ The router firmware runs autonomously — no host application needed.
 
 ```
 FIRMWARE=router        # what's in the EFR32 application slot
-FIRMWARE_VERSION=7.5.1 # EmberZNet version embedded in the GBL
+FIRMWARE_VERSION=7.5.2 # EmberZNet version embedded in the GBL
 FIRMWARE_BAUD=115200   # chip-side UART baud — S50uart_bridge reads this and
                        # arms TCP:8888 at 115200 (no MODE= line; otbr-agent off)
 ```
@@ -118,7 +118,7 @@ cd 2-Zigbee-Radio-Silabs-EFR32/27-Router
 
 ```
 firmware/
-└── z3-router-7.5.1-115200-hw.gbl   # filename embeds EmberZNet version, baud, flow (#145)
+└── z3-router-7.5.2-115200-hw.gbl   # filename embeds EmberZNet version, baud, flow (#145)
 ```
 
 `flash_efr32.sh` resolves the right file via a glob.
@@ -512,7 +512,7 @@ If the router was previously joined to a different network, it may need a full e
 **Via J-Link:**
 ```bash
 commander device masserase --device EFR32MG1B232F256GM48
-commander flash firmware/z3-router-7.5.1.s37 --device EFR32MG1B232F256GM48
+commander flash firmware/z3-router-7.5.2-115200-hw.s37 --device EFR32MG1B232F256GM48
 ```
 
 **Via UART:** Flash the firmware again with `universal-silabs-flasher` - this erases the NVM.

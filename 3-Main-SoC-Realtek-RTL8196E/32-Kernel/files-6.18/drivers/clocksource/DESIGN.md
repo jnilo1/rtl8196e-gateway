@@ -56,7 +56,7 @@ The suspected cause is a slow-domain capture failure of the enable edge: field
 register evidence and the DNT experiment support it, but do not establish a
 vendor erratum. DNT is a build-time choice with no runtime control interface:
 the Kconfig default is `n`, but both shipped configurations
-(`config-6.18-realtek.txt`, `config-7.2-realtek.txt`) set it to `y`.
+(`config-6.18-realtek.txt`, `config-7.3-realtek.txt`) set it to `y`.
 
 ## Security and performance invariants
 

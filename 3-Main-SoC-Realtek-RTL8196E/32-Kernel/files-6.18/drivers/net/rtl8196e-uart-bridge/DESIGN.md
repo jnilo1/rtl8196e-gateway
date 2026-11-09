@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-09-30 |
 | **Driver version** | 1.7 |
-| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
+| **Active release** | v4.8.0 (kernels `6.18.62` and `7.3.3`, `-rtl8196e-v4.8.0`) |
 
 This document explains what the driver does, why it exists, and the key
 choices that shaped the stabilised code in
@@ -21,7 +21,7 @@ shared transport for **every** host ↔ radio conversation:
 
 | Gateway-side firmware | Host-side client | Protocol over the bridge |
 |---|---|---|
-| NCP-UART-HW (EmberZNet 7.5.1) | Z2M / ZHA | EZSP v13 |
+| NCP-UART-HW (EmberZNet 7.5.2) | Z2M / ZHA | EZSP v13 |
 | RCP-UART-HW (802.15.4) | `cpcd` → `zigbeed` | CPC (Zigbee or Thread) |
 | OT-RCP (OpenThread) | `otbr-agent` | Spinel over HDLC |
 

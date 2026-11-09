@@ -104,7 +104,7 @@ Install the host tools, then clone the repository:
 
 ```bash
 sudo apt update
-sudo apt install git openssh-client fakeroot gcc mtd-utils squashfs-tools \
+sudo apt install git openssh-client fakeroot gcc libc6-dev mtd-utils squashfs-tools \
   tftp-hpa netcat-openbsd iproute2 iputils-ping python3 python3-venv \
   patch picocom
 

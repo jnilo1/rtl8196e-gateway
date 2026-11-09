@@ -11,7 +11,7 @@ This firmware enables communication with Zigbee coordinators like **Zigbee2MQTT*
 
 ## Features
 
-- **EZSP v13** - EmberZNet 7.5.1 serial protocol
+- **EZSP v13** - EmberZNet 7.5.2 serial protocol
 - **Zigbee PRO R22** - Full Zigbee 3.0 support
 - **Green Power** - Support for battery-free devices
 - **Source routing** - 100-entry route table for large networks
@@ -70,7 +70,7 @@ NCP at baud `<B>`:
 
 ```
 FIRMWARE=ncp           # what's in the EFR32 application slot
-FIRMWARE_VERSION=7.5.1 # EmberZNet version embedded in the GBL
+FIRMWARE_VERSION=7.5.2 # EmberZNet version embedded in the GBL
 FIRMWARE_BAUD=<B>      # chip-side UART baud — S50uart_bridge reads this and
                        # arms TCP:8888 at <B> (no MODE= line; otbr-agent off)
 ```
@@ -122,11 +122,11 @@ The output filename embeds the EmberZNet version and the chosen baud:
 
 ```
 firmware/
-├── ncp-uart-hw-7.5.1-115200-hw.gbl   # default (-hw = RTS/CTS flow, #145)
-├── ncp-uart-hw-7.5.1-230400-hw.gbl   # if you ran ./build_ncp.sh 230400
-├── ncp-uart-hw-7.5.1-460800-hw.gbl
-├── ncp-uart-hw-7.5.1-691200-hw.gbl
-└── ncp-uart-hw-7.5.1-892857-hw.gbl
+├── ncp-uart-hw-7.5.2-115200-hw.gbl   # default (-hw = RTS/CTS flow, #145)
+├── ncp-uart-hw-7.5.2-230400-hw.gbl   # if you ran ./build_ncp.sh 230400
+├── ncp-uart-hw-7.5.2-460800-hw.gbl
+├── ncp-uart-hw-7.5.2-691200-hw.gbl
+└── ncp-uart-hw-7.5.2-892857-hw.gbl
 ```
 
 `flash_efr32.sh` resolves the right file via a glob — no need to keep
@@ -150,7 +150,7 @@ filenames in sync manually.
 
 **Via J-Link/SWD** (if you have physical access to the SWD pads):
 ```bash
-commander flash firmware/ncp-uart-hw-7.5.1-460800-hw.gbl \
+commander flash firmware/ncp-uart-hw-7.5.2-460800-hw.gbl \
     --device EFR32MG1B232F256GM48
 ```
 

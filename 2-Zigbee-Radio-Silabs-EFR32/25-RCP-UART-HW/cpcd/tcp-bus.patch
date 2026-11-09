@@ -1,15 +1,15 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 73e20e4..6bba88c 100644
+index 52a49b2..ec78ab3 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -102,6 +102,7 @@ set(CPCD_SOURCES
-   "${PROJECT_SOURCE_DIR}/driver/driver_ezsp.c"
+@@ -117,6 +117,7 @@ set(CPCD_SOURCES
    "${PROJECT_SOURCE_DIR}/driver/driver_kill.c"
    "${PROJECT_SOURCE_DIR}/driver/driver_spi.c"
+   "${PROJECT_SOURCE_DIR}/driver/driver_sdio.c"
 +  "${PROJECT_SOURCE_DIR}/driver/driver_tcp.c"
    "${PROJECT_SOURCE_DIR}/driver/driver_uart.c"
    "${PROJECT_SOURCE_DIR}/driver/driver_xmodem.c"
-   "${PROJECT_SOURCE_DIR}/misc/board_controller.c"
+   "${PROJECT_SOURCE_DIR}/driver/netlink/nl_sdio_interface.c" 
 diff --git a/driver/driver_tcp.c b/driver/driver_tcp.c
 new file mode 100644
 index 0000000..7038c22
@@ -640,18 +640,18 @@ index 0000000..49c8e67
 +
 +#endif // DRIVER_TCP_H
 diff --git a/include/cpcd/config.h b/include/cpcd/config.h
-index 3b4a1e1..9e965a4 100644
+index 40ab893..6b4fff1 100644
 --- a/include/cpcd/config.h
 +++ b/include/cpcd/config.h
-@@ -24,6 +24,7 @@
- typedef enum {
+@@ -25,6 +25,7 @@ typedef enum {
    UART,
    SPI,
+   NETLINK_SDIO,
 +  TCP,
-   UNCHOSEN
- } bus_t;
- 
-@@ -71,6 +72,9 @@ typedef struct __attribute__((packed)) {
+ #if defined(ENABLE_SOCKET_DRIVER)
+   SOCKET,
+ #endif
+@@ -75,6 +76,9 @@ typedef struct __attribute__((packed)) {
    const char *spi_irq_chip;
    unsigned int spi_irq_pin;
  
@@ -662,7 +662,7 @@ index 3b4a1e1..9e965a4 100644
    int fwu_spi_reset_pin;
    const char *fwu_wake_chip;
 diff --git a/misc/config.c b/misc/config.c
-index 493c3d2..9e0c0ea 100644
+index a56f304..5d6c028 100644
 --- a/misc/config.c
 +++ b/misc/config.c
 @@ -93,6 +93,10 @@ config_t config = {
@@ -676,16 +676,16 @@ index 493c3d2..9e0c0ea 100644
    // Firmware update
    .fwu_reset_chip = NULL,
    .fwu_spi_reset_pin = -1,
-@@ -160,6 +164,8 @@ static const char* config_bus_to_str(bus_t value)
-       return "UART";
-     case SPI:
+@@ -162,6 +166,8 @@ static const char* config_bus_to_str(bus_t value)
        return "SPI";
+     case NETLINK_SDIO:
+       return "NETLINK_SDIO";
 +    case TCP:
 +      return "TCP";
-     case UNCHOSEN:
-       return "UNCHOSEN";
-     default:
-@@ -279,6 +285,9 @@ static void config_print(void)
+ #if defined(ENABLE_SOCKET_DRIVER)
+     case SOCKET:
+       return "SOCKET";
+@@ -285,6 +291,9 @@ static void config_print(void)
    CONFIG_PRINT_STR_COND(config.spi_irq_chip, config.bus == SPI);
    CONFIG_PRINT_DEC_COND(config.spi_irq_pin, config.bus == SPI);
  
@@ -695,16 +695,16 @@ index 493c3d2..9e0c0ea 100644
    CONFIG_PRINT_BOOL_TO_STR(config.fwu_recovery_pins_enabled);
    CONFIG_PRINT_STR_COND(config.fwu_reset_chip, config.fwu_recovery_pins_enabled);
    CONFIG_PRINT_DEC_COND(config.fwu_spi_reset_pin, config.fwu_recovery_pins_enabled);
-@@ -727,6 +736,8 @@ static void config_parse_config_file(void)
-         config.bus = UART;
-       } else if (0 == strcmp(val, "SPI")) {
+@@ -735,6 +744,8 @@ static void config_parse_config_file(void)
          config.bus = SPI;
+       } else if (0 == strcmp(val, "NETLINK_SDIO")) {
+         config.bus = NETLINK_SDIO;
 +      } else if (0 == strcmp(val, "TCP")) {
 +        config.bus = TCP;
-       } else {
-         FATAL("Config file error : bad bus_type value\n");
-       }
-@@ -745,6 +756,14 @@ static void config_parse_config_file(void)
+ #if defined(ENABLE_SOCKET_DRIVER)
+       } else if (0 == strcmp(val, "SOCKET")) {
+         config.bus = SOCKET;
+@@ -757,6 +768,14 @@ static void config_parse_config_file(void)
        if (*endptr != '\0') {
          FATAL("Bad config line \"%s\"", line);
        }
@@ -719,10 +719,10 @@ index 493c3d2..9e0c0ea 100644
      } else if (0 == strcmp(name, "bootloader_recovery_pins_enabled")) {
        if (0 == strcmp(val, "true")) {
          config.fwu_recovery_pins_enabled = true;
-@@ -952,6 +971,13 @@ static void config_validate_configuration(void)
-       }
+@@ -965,6 +984,13 @@ static void config_validate_configuration(void)
  
        prevent_device_collision(config.uart_file);
+     } else if (config.bus == NETLINK_SDIO) {
 +    } else if (config.bus == TCP) {
 +      if (config.tcp_server_address == NULL) {
 +        FATAL("tcp_server_address is required");
@@ -730,41 +730,41 @@ index 493c3d2..9e0c0ea 100644
 +      if (config.tcp_server_port == 0) {
 +        FATAL("tcp_server_port is required");
 +      }
-     } else {
-       FATAL("Invalid bus configuration.");
-     }
+ #if defined(ENABLE_SOCKET_DRIVER)
+     } else if (config.bus == SOCKET) {
+       // TODO check
 diff --git a/modes/normal.c b/modes/normal.c
-index 56d89f7..64a162f 100644
+index fcb890a..6b6bb81 100644
 --- a/modes/normal.c
 +++ b/modes/normal.c
-@@ -28,6 +28,7 @@
- 
- #include "driver/driver_uart.h"
+@@ -30,6 +30,7 @@
  #include "driver/driver_spi.h"
-+#include "driver/driver_tcp.h"
  #include "driver/driver_ezsp.h"
- 
- void run_normal_mode(void)
-@@ -50,6 +51,11 @@ void run_normal_mode(void)
-                       config.spi_bitrate,
-                       config.spi_irq_chip,
-                       config.spi_irq_pin);
+ #include "driver/driver_sdio.h"
++#include "driver/driver_tcp.h"
+ #if defined(ENABLE_SOCKET_DRIVER)
+ #include "driver/driver_socket.h"
+ #endif
+@@ -58,6 +59,11 @@ void run_normal_mode(void)
+       WARN("NETLINK_SDIO is still considered experimental and may not yet meet production-quality standards.");
+       driver_sdio_init(&fd_socket_driver_core,
+                        &fd_socket_driver_core_notify);
 +    } else if (config.bus == TCP) {
 +      driver_tcp_init(&fd_socket_driver_core,
 +                      &fd_socket_driver_core_notify,
 +                      config.tcp_server_address,
 +                      config.tcp_server_port);
-     } else {
-       BUG();
-     }
-@@ -92,6 +98,10 @@ bool is_bootloader_running(void)
-                                                                   config.spi_bitrate,
-                                                                   config.spi_irq_chip,
-                                                                   config.spi_irq_pin);
+ #if defined(ENABLE_SOCKET_DRIVER)
+     } else if (config.bus == SOCKET) {
+       driver_socket_init(&fd_socket_driver_core,
+@@ -108,6 +114,10 @@ bool is_bootloader_running(void)
+   } else if (config.bus == NETLINK_SDIO) {
+     WARN("NETLINK_SDIO doesn't support firmware updade mode.");
+     secondary_running_bootloader = false; //not implementing for now
 +  } else if (config.bus == TCP) {
 +    // Bootloader probing / firmware update over the TCP bridge is out of scope;
 +    // assume the secondary is running its application.
 +    secondary_running_bootloader = false;
-   } else {
-     BUG();
-   }
+ #if defined(ENABLE_SOCKET_DRIVER)
+   } else if (config.bus == SOCKET) {
+     return secondary_running_bootloader;

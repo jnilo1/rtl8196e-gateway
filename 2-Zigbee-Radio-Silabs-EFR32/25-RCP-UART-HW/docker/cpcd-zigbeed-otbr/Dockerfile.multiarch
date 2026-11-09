@@ -1,15 +1,15 @@
 # Experimental OTBR host for the GSDK 4.5 multi-PAN RCP.
 #
 # This deliberately builds OpenThread and OTBR from the versions vendored by
-# GSDK 4.5.0. The Silicon Labs CPC spinel transport and platform config must
+# GSDK 4.5.1. The Silicon Labs CPC spinel transport and platform config must
 # match that OpenThread tree; using a stock OTBR image omits both the vendor
 # transport and OT_MULTIPAN_RCP URL handling.
 
 FROM ubuntu:24.04 AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GSDK_VERSION=v4.5.0
-ARG CPCD_VERSION=v4.5.3
+ARG GSDK_VERSION=v4.5.1
+ARG CPCD_VERSION=v4.6.2
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

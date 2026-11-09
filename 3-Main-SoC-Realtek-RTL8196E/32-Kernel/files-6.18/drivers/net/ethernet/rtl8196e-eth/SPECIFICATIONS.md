@@ -4,7 +4,7 @@
 |---|---|
 | **Document date** | 2026-07-30 |
 | **Driver version** | 2.24 (`RTL8196E_DRV_VERSION` in `rtl8196e_main.c`). v2.24 fixes true LAN LED off by routing the board-declared active-low pad to an inactive GPIO output; the v2.23 datapath and recovery baseline is unchanged |
-| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
+| **Active release** | v4.8.0 (kernels `6.18.62` and `7.3.3`, `-rtl8196e-v4.8.0`) |
 
 Goals/non-goals contract and externally observable behaviour of the
 driver. The architecture rationale lives in `DESIGN.md`, findings and

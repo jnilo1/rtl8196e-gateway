@@ -28,7 +28,7 @@ BOARD=sengled-e39-g8c ./flash_efr32.sh -y ncp    # flashes the -<board>-suffixed
 ```
 
 Non-lidl artefacts keep the historical flat `firmware/` directory but carry a
-`-<board>` filename suffix (e.g. `ncp-uart-hw-7.5.1-115200-sw-sengled-e39-g8c.gbl`,
+`-<board>` filename suffix (e.g. `ncp-uart-hw-7.5.2-115200-sw-sengled-e39-g8c.gbl`,
 the `-sw-` being the board's flow-control type, #145),
 so the lidl reference firmware is never shadowed. `flash_efr32.sh` resolves that
 suffixed file for a non-lidl `BOARD=` and, because it always runs against a live
@@ -88,11 +88,11 @@ before you flash:
 
 | Firmware | Committed prebuilt | Baud | Hardware evidence |
 |---|---|---|---|
-| NCP | `ncp-uart-hw-7.5.1-115200-sw-sengled-e39-g8c.gbl` | 115200 | Flashed to a real G4 and validated end-to-end — Home Assistant talks to the radio (#130). |
+| NCP | `ncp-uart-hw-7.5.2-115200-sw-sengled-e39-g8c.gbl` | 115200 | The 7.5.1 build (Gecko SDK 4.5.0) was flashed to a real G4 and validated end-to-end — Home Assistant talks to the radio (#130). This 7.5.2 build comes from the same sources on Gecko SDK 4.5.1 and has not run on a G4 yet. |
 | Gecko bootloader | `bootloader-uart-xmodem-2.4.3-sengled-e39-g8c.gbl` | — | Run on @hlyi's G4: GPIO activation on PB15 drops the chip into the Gecko Bootloader (#148). |
-| OT-RCP | `ot-rcp-230400-sw-iostream-sengled-e39-g8c.gbl` | 230400 | 230400 is @hlyi's measured operating point on this board (#134, #142); at 460800 the host's 16-byte RX FIFO overruns. Our build of those sources, not the binary he ran. |
+| OT-RCP | `ot-rcp-230400-sw-iostream-sengled-e39-g8c.gbl` | 230400 | 230400 is @hlyi's measured operating point on this board (#134, #142); at 460800 the host's 16-byte RX FIFO overruns. Our build of those sources (now on Gecko SDK 4.5.1), not the binary he ran. |
 | RCP | *not shipped* — build it with `BOARD=sengled-e39-g8c ./25-RCP-UART-HW/build_rcp.sh 230400` | 230400 | **Never run on a G4**, so no prebuilt is committed. Flow clamped to none (CPC has no XON/XOFF; recorded as none in `radio.conf` so the bridge matches). |
-| Z3 Router | `z3-router-7.5.1-115200-sw-sengled-e39-g8c.gbl` | 115200 | **Never run on a G4** (#143). |
+| Z3 Router | `z3-router-7.5.2-115200-sw-sengled-e39-g8c.gbl` | 115200 | **Never run on a G4** (#143). |
 
 The bauds above are what `flash_efr32.sh` picks by itself on this board — the
 230400 defaults come from `BOARD_RCP_DEFAULT_BAUD` / `BOARD_OT_RCP_DEFAULT_BAUD`

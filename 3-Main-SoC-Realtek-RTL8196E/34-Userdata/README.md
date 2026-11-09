@@ -3,7 +3,7 @@
 This directory contains the writable user partition for the gateway.
 
 > **Board- and kernel-agnostic:** the same `userdata.bin` works for every board
-> (`lidl`, `sengled-e39-g8c`) and kernel line (`6.18`, `7.2`). No `BOARD`/`KERNEL`
+> (`lidl`, `sengled-e39-g8c`) and kernel line (`6.18`, `7.3`). No `BOARD`/`KERNEL`
 > selection applies here.
 
 ## Overview
@@ -129,7 +129,7 @@ See `ot-br-posix/README.md` for Thread-specific documentation.
 | Key | Values | Default | Written by | Read by |
 |-----|--------|---------|------------|---------|
 | `FIRMWARE` | `ncp`, `rcp`, `otrcp`, `router` | (absent) | `flash_efr32.sh` | docs / diagnostics |
-| `FIRMWARE_VERSION` | e.g. `7.5.1` (NCP, Router only) | (absent) | `flash_efr32.sh` | docs / diagnostics |
+| `FIRMWARE_VERSION` | e.g. `7.5.2` (NCP, Router only) | (absent) | `flash_efr32.sh` | docs / diagnostics |
 | `FIRMWARE_BAUD` | `115200`, `230400`, `460800`, `691200`, `892857` | `460800` | `flash_efr32.sh` | `S50uart_bridge`, `S70otbr` |
 | `FIRMWARE_FLOW_CTRL` | `none`, `sw`, `hw` | (absent ⇒ devicetree per-board default) | `flash_efr32.sh` — app flashes (#141) | `S50uart_bridge`, `S70otbr` |
 | `BOOTLOADER_VERSION` | e.g. `2.4.2` | (absent) | `flash_efr32.sh` — every flash | docs / diagnostics |

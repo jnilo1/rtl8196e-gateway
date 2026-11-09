@@ -42,7 +42,7 @@ The two top-level image selectors are:
 | Variable | Values | Default |
 | --- | --- | --- |
 | `BOARD` | `lidl`, `sengled-e39-g8c` | `lidl` |
-| `KERNEL` | `6.18`, `7.2` | `6.18` |
+| `KERNEL` | `6.18`, `7.3` | `6.18` |
 
 Examples:
 
@@ -60,7 +60,7 @@ BOARD=sengled-e39-g8c ./flash_install_rtl8196e.sh
 BOARD=sengled-e39-g8c ./flash_install_rtl8196e.sh -y <g4-ip>
 
 # Alternate kernel line
-KERNEL=7.2 ./flash_install_rtl8196e.sh -y <gateway-ip>
+KERNEL=7.3 ./flash_install_rtl8196e.sh -y <gateway-ip>
 ```
 
 Do not select another board casually. A full image includes the bootloader, and
@@ -251,8 +251,8 @@ distributing an assembled image:
 # Sengled G4 / Linux 6.18
 BOARD=sengled-e39-g8c ./build_fullflash.sh
 
-# Sengled G4 / alternate Linux 7.2 line
-BOARD=sengled-e39-g8c KERNEL=7.2 ./build_fullflash.sh
+# Sengled G4 / alternate Linux 7.3 line
+BOARD=sengled-e39-g8c KERNEL=7.3 ./build_fullflash.sh
 ```
 
 | Partition | Offset | Input | Header handling |
@@ -307,7 +307,7 @@ low-level implementation is documented in the
 For pre-built full-system images on Ubuntu:
 
 ```bash
-sudo apt install fakeroot gcc mtd-utils squashfs-tools tftp-hpa \
+sudo apt install fakeroot gcc libc6-dev mtd-utils squashfs-tools tftp-hpa \
   netcat-openbsd iproute2 iputils-ping openssh-client
 ```
 

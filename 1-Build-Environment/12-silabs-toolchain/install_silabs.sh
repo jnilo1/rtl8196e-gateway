@@ -15,7 +15,7 @@ set -e
 
 # Configuration
 SLC_VERSION="5.11"  # Downloaded version may be newer (auto-updated by Silabs)
-GECKO_SDK_VERSION="4.5.0"
+GECKO_SDK_VERSION="4.5.1"
 
 # Determine project root (parent of 1-Build-Environment)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,6 +33,32 @@ NC='\033[0m' # No Color
 info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+
+# silabs.com answers 403 to command-line clients (since 2026-10-22) while a
+# browser still gets the files, so the two Silicon Labs archives can be
+# supplied by hand: a file of the same name in DOWNLOADS_DIR is used instead of
+# the download. See downloads/README.md.
+DOWNLOADS_DIR="${SCRIPT_DIR}/downloads"
+
+# fetch_silabs_zip <file name> <url> <output path>
+fetch_silabs_zip() {
+    local name="$1" url="$2" out="$3"
+    if [ -f "${DOWNLOADS_DIR}/${name}" ]; then
+        info "Using ${DOWNLOADS_DIR}/${name}"
+        cp "${DOWNLOADS_DIR}/${name}" "$out"
+        return 0
+    fi
+    if wget -q --show-progress -O "$out" "$url"; then
+        return 0
+    fi
+    rm -f "$out"
+    echo -e "${RED}[ERROR]${NC} Could not download ${name}" >&2
+    echo "  silabs.com may refuse command-line downloads. Open this link in a browser:" >&2
+    echo "    ${url}" >&2
+    echo "  save the file as ${DOWNLOADS_DIR}/${name}" >&2
+    echo "  and run this script again." >&2
+    exit 1
+}
 
 # Detect architecture (for ARM GCC toolchain)
 ARCH=$(uname -m)
@@ -56,7 +82,7 @@ SLC_URL="https://www.silabs.com/documents/public/software/slc_cli_linux.zip"
 SLC_ZIP="slc_cli_linux.zip"
 
 if [ ! -f "$INSTALL_DIR/slc_cli/slc" ]; then
-    wget -q --show-progress -O "$SLC_ZIP" "$SLC_URL" || error "Failed to download slc-cli"
+    fetch_silabs_zip "slc_cli_linux.zip" "$SLC_URL" "$SLC_ZIP"
     unzip -q -o "$SLC_ZIP"
     rm "$SLC_ZIP"
     chmod +x slc_cli/slc
@@ -118,7 +144,9 @@ fi
 info "Installing Simplicity Commander..."
 
 if [ ! -d "$INSTALL_DIR/commander" ]; then
-    wget -q --show-progress -O commander.zip "https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip" || error "Failed to download Commander"
+    fetch_silabs_zip "SimplicityCommander-Linux.zip" \
+        "https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip" \
+        commander.zip
     unzip -q commander.zip
     tar xf SimplicityCommander-Linux/Commander_linux_x86_64_*.tar.bz -C .
     rm -rf commander.zip SimplicityCommander-Linux

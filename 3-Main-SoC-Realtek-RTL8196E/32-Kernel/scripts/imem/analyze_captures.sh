@@ -7,9 +7,9 @@ KERNEL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LINE="${1:-}"
 CAPTURES="${2:-}"
 case "$LINE" in
-	6.18) VERSION=6.18.54 ;;
-	7.2) VERSION=7.2.8 ;;
-	*) echo "usage: $0 <6.18|7.2> <capture-directory>" >&2; exit 2 ;;
+	6.18) VERSION=6.18.62 ;;
+	7.3) VERSION=7.3.3 ;;
+	*) echo "usage: $0 <6.18|7.3> <capture-directory>" >&2; exit 2 ;;
 esac
 [ -d "$CAPTURES" ] || { echo "capture directory not found: $CAPTURES" >&2; exit 2; }
 CAPTURES="$(realpath "$CAPTURES")"

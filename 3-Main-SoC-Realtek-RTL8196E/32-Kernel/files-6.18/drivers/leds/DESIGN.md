@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-07-29 |
 | **Driver version** | 1.2 (`leds-gpio-pwm.c`) |
-| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
+| **Active release** | v4.8.0 (kernels `6.18.62` and `7.3.3`, `-rtl8196e-v4.8.0`) |
 
 This is the design companion to [`AUDIT.md`](AUDIT.md) (code-level audit of
 `leds-gpio-pwm.c`). It covers the hardware story both drivers share: the

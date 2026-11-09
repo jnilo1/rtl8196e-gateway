@@ -192,7 +192,7 @@ The full installer checks its required commands before modifying the gateway.
 For a normal pre-built-image installation on Ubuntu:
 
 ```bash
-sudo apt install fakeroot gcc mtd-utils squashfs-tools tftp-hpa \
+sudo apt install fakeroot gcc libc6-dev mtd-utils squashfs-tools tftp-hpa \
   netcat-openbsd iproute2 iputils-ping openssh-client patch
 ```
 

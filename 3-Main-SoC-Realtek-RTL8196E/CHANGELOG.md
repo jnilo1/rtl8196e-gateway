@@ -6,6 +6,129 @@ rootfs (33-), and userdata (34-).
 
 ---
 
+## [4.8.0] - 2026-11-09
+
+### Kernel — Linux 6.18.54 → 6.18.62 on the production line, with a new I-MEM policy
+
+The production line moves to the 6.18.62 point release. Images regenerated:
+`{lidl, sengled-e39-g8c} × {6.18}`. `uname -r` reads `6.18.62-rtl8196e-v4.8.0`.
+The benches below ran on the same sources before the 4.8.0 version stamp, which
+changes only that string (the images are the same size). Two patches were refreshed for context
+offsets only (`arch-mips-Kconfig`, `net-core-dev.c`); their added and removed lines
+are unchanged. The 6.18.62 build is unpadded (no recorded text layout).
+
+The 6.18.54 I-MEM policy no longer fits the window on 6.18.62: 15932 of 15872 bytes,
+60 over. Two of its sections grew upstream: `tcp_v4_reqsk_destructor` (12 → 32 bytes,
+`kfree()` became `kfree_rcu()`) and `skb_copy_and_csum_bits` (728 → 752 bytes, no
+change in its own source; the growth comes from an inlined callee). The line gets a
+policy re-selected from empty-window profiles captured on 6.18.62, with the same RX
+weight as before (0.1): `scripts/imem/policies/6.18.62.tsv`, 85 sections,
+15868/15872 bytes, bootstrap retention 96.1 %. The largest change is the driver's
+`rtl8196e_ring_rx_poll` (1608 bytes) entering the window, while the SLUB free path
+(`kmem_cache_free`, `__slab_free`) leaves it.
+
+Policy choice, benched on the Lidl bench box in one session, each candidate between
+runs of the shipped 6.18.54 image (the 6.18.54 policy cannot be built on 6.18.62, so
+the reference is the previous release itself; 11 TX / 11 RX reps each):
+
+| Image | TCP TX | TCP RX |
+|---|---:|---:|
+| 6.18.54 (v4.7.0), three runs | 83.6 / 83.4 / 83.5 | 93.7 / 93.7 / 93.8 |
+| **6.18.62, RX weight 0.1 (shipped)** | **83.5** | **93.6** |
+| 6.18.62, RX weight 0.25 (rejected) | 83.1 | 93.7 |
+
+Both weights hold the previous release within the bench noise; 0.1 keeps the higher
+TX. The bump is throughput-neutral: no gain, no loss.
+
+Release bench of the shipped Lidl image (`PERFORMANCE.md`, 6.18.62 row; it links
+identically to the 0.1 candidate above): TCP RX 93.8 Mbit/s (93.1–93.9), TCP TX
+83.7 Mbit/s (82.5–84.5), UDP RX 44.2 Mbit/s at 54 % loss, UDP TX 36.6 Mbit/s at 0 %
+loss; zero retransmissions and a clean `dmesg`. The TCP-phase `rx_drop` (+42) matches
+the reference images of the paired session (+40 to +42).
+
+### Kernel — Linux 7.2.8 (EOL) → 7.3.3 on the experimental line, with its own I-MEM policy
+
+Linux 7.2 reached end of life upstream (7.2.15); the experimental line moves to
+7.3.3, kernel.org's latest stable. `patches-7.2/`, `files-7.2/` and
+`config-7.2-realtek.txt` become `patches-7.3/`, `files-7.3/` and
+`config-7.3-realtek.txt`; `KERNEL=7.3` replaces `KERNEL=7.2` in every script, CI
+lint step and document. Fourteen patches were refreshed for context offsets only
+(`arch-mips-Kconfig`, `drivers-gpio-Kconfig`, `drivers-irqchip-Kconfig`,
+`drivers-irqchip-Makefile`, `drivers-spi-Kconfig`, `drivers-spi-Makefile`,
+`drivers-tty-serial-8250-Kconfig`, `drivers-tty-serial-8250-Makefile`,
+`drivers-watchdog-Kconfig`, `drivers-watchdog-Makefile`, `include-linux-hrtimer.h`,
+`kernel-time-hrtimer.c`, `net-core-dev.c`, `scripts-mod-modpost.c`); their added and
+removed lines are unchanged. The `files-7.3/` overlay compiles unchanged, with no
+compiler warning.
+
+Images regenerated: `{lidl, sengled-e39-g8c} × {7.3}`, `uname -r` reads
+`7.3.3-rtl8196e-v4.8.0`; the Sengled board gets its first 7.3 image. As for 6.18,
+the benches below ran on the same sources before the 4.8.0 version stamp. Both
+`kernel-7.2.img` are removed.
+
+`olddefconfig` on 7.3.3 changes no driver. Upstream folded `PROC_SYSCTL` into
+`SYSCTL` (`/proc/sys` is still built); the MIPS vDSO time support now requires the
+R4K or GIC clocksource, which this SoC has neither of, so `GENERIC_GETTIMEOFDAY` /
+`HAVE_GENERIC_VDSO` drop out — our clocksource never had a vDSO mode, so time calls
+already went through the syscall.
+
+The 7.2.8 I-MEM policy still fits the window on 7.3.3 and passes the structural
+gate, but it costs TCP TX there: 83.6 Mbit/s on a first bench, 3.2 Mbit/s below
+7.2.8 in the paired session below. The line gets a policy re-selected from
+empty-window profiles captured on 7.3.3: `scripts/imem/policies/7.3.3.tsv`,
+98 sections, 15868/15872 bytes, RX weight 0.25, bootstrap retention 89.2 %.
+
+Policy choice, benched on the Lidl bench box in one session, each 7.3.3 image
+between runs of the shipped 7.2.8 image (11 TX / 11 RX reps each):
+
+| Image | TCP TX | TCP RX |
+|---|---:|---:|
+| 7.2.8 (v4.7.0), four runs | 86.6 / 87.2 / 86.7 / 87.0 | 93.7 / 93.6 / 93.6 / 93.6 |
+| 7.3.3, carried 7.2.8 policy (rejected) | 83.7 | 93.8 |
+| 7.3.3, RX weight 0.1 (rejected) | 85.6 | 93.3 |
+| **7.3.3, RX weight 0.25 (shipped)** | **86.5** | **93.3** |
+
+The re-selected policy recovers the TX lost by the carried one; 7.3.3 ends 0.4
+Mbit/s TX and 0.3 Mbit/s RX below 7.2.8, inside the bench noise.
+
+Release bench of the shipped Lidl image (`PERFORMANCE.md`, 7.3.3 row): TCP RX
+93.2 Mbit/s (92.6–93.7), TCP TX 86.1 Mbit/s (83.6–87.7), UDP RX 46.2 Mbit/s at 52 %
+loss, UDP TX 36.6 Mbit/s at 0 % loss; zero retransmissions and a clean `dmesg`; it
+links identically to the 0.25 candidate above. The TCP-phase `rx_drop` (+41) matches
+the reference images of the paired session (+40 to +42).
+
+### Flash tooling — `flash_install_rtl8196e.sh` checks for the C library headers
+
+On Debian and Ubuntu, `gcc` only recommends `libc6-dev`, so a host can have the
+compiler without the C library headers. The installer's prerequisite check only
+looked for the `gcc` command, and the install then failed deep in the build, when
+`cvimg.c` could not include `<arpa/inet.h>`. The check now preprocesses that include
+and reports `libc6-dev` as a missing package when it fails. `libc6-dev` is also
+listed in the apt install lines of the getting-started, upgrading, troubleshooting
+and migration guides.
+
+### Changed: nano 9.2 → 9.3
+
+The on-device editor (`nano`, and `vi` which points at it) is rebuilt from upstream
+9.3, a bugfix release: an overlong filename is now clipped properly on the mini bar.
+The build options and the static ncurses 6.6 it links against are unchanged.
+
+### Changed: otbr-agent / ot-ctl — ot-br-posix v2026.09.0 → v2026.11.0
+
+The Thread Border Router moves two upstream releases forward (`otbr-agent --version`
+now reports `…-629-g76fb21d6`, OpenThread core `ecd308b4a`). For the features this
+build enables, upstream brings: a pending dataset set over REST is now committed
+through `MGMT_PENDING_SET`, network diagnostics gain the Enhanced Route TLV and
+handle non-extended destinations, netlink unicast ACKs are verified before the
+address cache is updated, and the daemon side of the `ot-ctl` session socket is tightened. The
+firewall, NAT64, D-Bus and web-UI changes in these releases do not apply: those
+features are built off here.
+
+The three local patches applied unchanged: the Home Assistant REST keys (the 26
+dataset keys are all still present; the five new camelCase keys are diagnostics
+fields, left as they are), the five `/api/actions` registrations (an unregistered
+path still answers 404), and the RCP UART software-flow-control patch.
+
 ## [4.7.0] - 2026-09-30
 
 ### Kernel — Linux 6.18.51 → 6.18.54 on the production line, with a new I-MEM policy

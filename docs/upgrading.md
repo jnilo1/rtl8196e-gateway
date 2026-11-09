@@ -65,7 +65,7 @@ requirement stated in full.
 From the repository root, install the small image-build and flash tool set:
 
 ```bash
-sudo apt install fakeroot gcc mtd-utils squashfs-tools tftp-hpa \
+sudo apt install fakeroot gcc libc6-dev mtd-utils squashfs-tools tftp-hpa \
   netcat-openbsd iproute2 iputils-ping openssh-client patch
 ```
 
@@ -143,13 +143,13 @@ for that case.
 
 ## Alternate kernel line
 
-Linux 6.18 is the production default. Experienced users can select Linux 7.2:
+Linux 6.18 is the production default. Experienced users can select Linux 7.3:
 
 ```bash
-KERNEL=7.2 ./flash_install_rtl8196e.sh -y <gateway-ip>
+KERNEL=7.3 ./flash_install_rtl8196e.sh -y <gateway-ip>
 ```
 
-For Sengled, set both `BOARD=sengled-e39-g8c` and `KERNEL=7.2`. Kernel selection
+For Sengled, set both `BOARD=sengled-e39-g8c` and `KERNEL=7.3`. Kernel selection
 does not change the EFR32 application.
 
 ## Verify the upgrade

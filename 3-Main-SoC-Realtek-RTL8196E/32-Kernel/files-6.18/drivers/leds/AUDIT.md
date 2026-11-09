@@ -12,7 +12,7 @@
 | **Last fully audited baseline** | v1.2 |
 | **Post-baseline changes** | none |
 | **Validation state** | static, `W=1`, checkpatch and DT-schema validation passed; the target lifecycle/PWM gate (§5) was not run as a separate gate; the driver has shipped since v4.0.0 |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | §2 (LED-005…010) and §3 (LED-001…004) |
 | **Scope** | driver, LED-core/timer/GPIO contracts, Kconfig/Makefile, DT, lifecycle and performance |
 | **Companion** | `DESIGN.md` |

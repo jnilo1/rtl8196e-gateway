@@ -13,7 +13,7 @@
  static DEFINE_SPINLOCK(ptype_lock);
  struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
  
-@@ -6637,7 +6643,7 @@
+@@ -6679,7 +6685,7 @@
   * The entry's receive function will be scheduled to run.
   * Consider using __napi_schedule_irqoff() if hard irqs are masked.
   */
@@ -22,7 +22,7 @@
  {
  	unsigned long flags;
  
-@@ -6689,7 +6695,7 @@
+@@ -6731,7 +6737,7 @@
   * because the interrupt disabled assumption might not be true
   * due to force-threaded interrupts and spinlock substitution.
   */
@@ -31,7 +31,7 @@
  {
  	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
  		____napi_schedule(this_cpu_ptr(&softnet_data), n);
-@@ -6698,7 +6704,7 @@
+@@ -6740,7 +6746,7 @@
  }
  EXPORT_SYMBOL(__napi_schedule_irqoff);
  

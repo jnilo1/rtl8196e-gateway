@@ -3,12 +3,12 @@
 #
 # Two coexisting kernel lines, selected by KERNEL (default 6.18):
 #   6.18 (production)   → patches-6.18/ files-6.18/ config-6.18-realtek.txt
-#   7.2  (experimental) → patches-7.2/  files-7.2/  config-7.2-realtek.txt
+#   7.3  (experimental) → patches-7.3/  files-7.3/  config-7.3-realtek.txt
 # Output: kernel-img/<board>/kernel-<KERNEL>.img (zboot; in-tree decompressor).
 #
 # Usage:
 #   ./build_kernel.sh                        # 6.18 / lidl → kernel-img/lidl/kernel-6.18.img
-#   KERNEL=7.2 ./build_kernel.sh             # build the 7.2 line
+#   KERNEL=7.3 ./build_kernel.sh             # build the 7.3 line
 #   BOARD=sengled-e39-g8c ./build_kernel.sh  # build for the Sengled G4 board
 #   ./build_kernel.sh clean                  # wipe build tree, rebuild from scratch
 #   ./build_kernel.sh menuconfig             # open menuconfig
@@ -17,7 +17,7 @@
 #   ./build_kernel.sh --help
 #
 #   BOARD=<name>   board devicetree built in (default: lidl; also sengled-e39-g8c).
-#   KERNEL=<line>  kernel line (default: 6.18; also 7.2).
+#   KERNEL=<line>  kernel line (default: 6.18; also 7.3).
 #   KERNEL_MIRROR=<url>  base of a kernel.org mirror, the directory that holds
 #                  v6.x/ and v7.x/ (default: empty = https://cdn.kernel.org/pub/linux/kernel).
 #                  e.g. KERNEL_MIRROR=https://mirrors.ircam.fr/pub/linux/kernel
@@ -51,17 +51,17 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL="${KERNEL:-6.18}"
 case "$KERNEL" in
     6.18)
-        KERNEL_VERSION="6.18.54"        # exact tarball version
+        KERNEL_VERSION="6.18.62"        # exact tarball version
         KERNEL_MAJOR_MINOR="6.18"       # stable family (paths, image name)
         KERNEL_MAJOR="6.x"              # kernel.org /pub/linux/kernel/v${MAJOR}/
         ;;
-    7.2)
-        KERNEL_VERSION="7.2.8"          # exact tarball version (linux-7.2.8.tar.xz)
-        KERNEL_MAJOR_MINOR="7.2"
+    7.3)
+        KERNEL_VERSION="7.3.3"          # exact tarball version (linux-7.3.3.tar.xz)
+        KERNEL_MAJOR_MINOR="7.3"
         KERNEL_MAJOR="7.x"
         ;;
     *)
-        echo "ERROR: unknown KERNEL '$KERNEL' (known lines: 6.18, 7.2)" >&2
+        echo "ERROR: unknown KERNEL '$KERNEL' (known lines: 6.18, 7.3)" >&2
         exit 1
         ;;
 esac

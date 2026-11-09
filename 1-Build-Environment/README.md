@@ -79,7 +79,7 @@ The script:
 1. installs Ubuntu host packages and i386 compatibility libraries;
 2. builds the patched Lexra MIPS toolchain;
 3. builds the Realtek image tools;
-4. downloads ARM GCC, `slc-cli`, Gecko SDK 4.5.0, and Commander;
+4. downloads ARM GCC, `slc-cli`, Gecko SDK 4.5.1, and Commander;
 5. writes the tools under the project directory where build scripts discover
    them automatically.
 
@@ -152,7 +152,7 @@ instructions. Do not replace the supplied compiler with a generic
 `mips-linux-gnu-gcc`.
 
 EFR32 Series 1 is no longer supported by recent Silabs SDK lines. The on-chip
-firmware intentionally builds against Gecko SDK 4.5.0; the modern EmberZNet 8.x
+firmware intentionally builds against Gecko SDK 4.5.1; the modern EmberZNet 8.x
 path moves the stack to host-side `zigbeed` rather than compiling 8.x for the
 radio.
 
@@ -163,7 +163,7 @@ radio.
 ```bash
 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
 BOARD=sengled-e39-g8c ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
-KERNEL=7.2 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
+KERNEL=7.3 ./3-Main-SoC-Realtek-RTL8196E/build_rtl8196e.sh
 ```
 
 Reference: [RTL8196E Linux system](../3-Main-SoC-Realtek-RTL8196E/README.md).
@@ -189,6 +189,7 @@ assuming a target name or environment variable.
 | `10-lexra-toolchain/TOOLCHAIN_UPDATE.md` | Toolchain version history and bump procedure |
 | `11-realtek-tools/` | `cvimg`, legacy LZMA, and device-side flash utilities |
 | `12-silabs-toolchain/` | Silabs tool download and environment setup |
+| `12-silabs-toolchain/downloads/` | Drop-in for `slc-cli` / Commander archives downloaded in a browser |
 | `Dockerfile` | Reproducible Ubuntu 22.04 environment |
 | `install_deps.sh` | Native installation orchestrator |
 
@@ -197,7 +198,18 @@ assuming a target name or environment variable.
 ### Downloads or Docker build fail
 
 Toolchain setup downloads several upstream archives and can fail transiently.
-Retry the same command first. For a deliberately clean Docker retry:
+Retry the same command first.
+
+If the failure names `slc_cli_linux.zip` or `SimplicityCommander-Linux.zip`,
+retrying will not help: since 2026-10-22 silabs.com refuses command-line
+downloads (`403 Forbidden`) while a web browser still gets the files. Download
+the archive in a browser, save it under the same name in
+`12-silabs-toolchain/downloads/`, and run the same command again — both the
+native installer and the Docker build use a file found there instead of
+downloading it. Details in
+[`12-silabs-toolchain/downloads/README.md`](12-silabs-toolchain/downloads/README.md).
+
+For a deliberately clean Docker retry:
 
 ```bash
 docker build --no-cache -t rtl8196e-gateway-builder .

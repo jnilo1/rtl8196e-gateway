@@ -45,7 +45,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # version of 2026.5 AND switches its callers to camelCase.
 # To update: check https://github.com/openthread/ot-br-posix/releases
 #            or test with: ./build_otbr.sh main
-OTBR_DEFAULT="v2026.09.0"  # released 2026-09-01, openthread submodule 2a8b4a57edb1
+OTBR_DEFAULT="v2026.11.0"  # released 2026-11-01, openthread submodule ecd308b4a00f
 BRANCH="${1:-$OTBR_DEFAULT}"
 SOURCE_DIR="${SCRIPT_DIR}/ot-br-posix"
 BUILD_DIR="${SCRIPT_DIR}/build"
@@ -191,7 +191,20 @@ echo "==> CC: ${CC}"
 echo "==> CXX: ${CXX}"
 echo ""
 
-# Create build directory
+# Start from an empty build directory whenever the cache was configured for
+# another source revision or another clone path. CMake keeps every cached
+# option across runs, so a cache written by an older tag can carry an option a
+# newer OpenThread has since removed and now rejects (OT_P2P, at the move to
+# v2026.11.0, aborted the configure step); a cache written under another path
+# is refused outright. The directory is a pure cache: dropping it costs a full
+# rebuild, nothing else. The stamp is written only after a successful
+# configure, so a failed one is cleaned on the next run.
+SRC_STAMP="$(git -C "$SOURCE_DIR" rev-parse HEAD) ${SOURCE_DIR}"
+STAMP_FILE="${BUILD_DIR}/.otbr-source"
+if [ -d "$BUILD_DIR" ] && [ "$(cat "$STAMP_FILE" 2>/dev/null)" != "$SRC_STAMP" ]; then
+    echo "==> Build cache is from another revision or path, starting clean..."
+    rm -rf "$BUILD_DIR"
+fi
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
@@ -267,8 +280,8 @@ cmake "$SOURCE_DIR" \
     -DOT_FIREWALL=OFF \
     -DOT_CHANNEL_MANAGER=ON \
     -DOT_CHANNEL_MONITOR=ON \
-    -DOT_POSIX_SETTINGS_PATH=\"/userdata/thread\" \
-    "$@"
+    -DOT_POSIX_SETTINGS_PATH=\"/userdata/thread\"
+echo "$SRC_STAMP" > "$STAMP_FILE"
 
 echo ""
 echo "==> Configuration complete!"

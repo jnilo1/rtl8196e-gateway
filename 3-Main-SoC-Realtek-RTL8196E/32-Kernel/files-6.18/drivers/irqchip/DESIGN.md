@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-06-12 |
 | **Driver version** | 1.2 |
-| **Active release** | v4.7.0 (kernels `6.18.54` and `7.2.8`, `-rtl8196e-v4.7.0`) |
+| **Active release** | v4.8.0 (kernels `6.18.62` and `7.3.3`, `-rtl8196e-v4.8.0`) |
 
 Architecture companion to [`AUDIT.md`](AUDIT.md). Explains what the RTL8196E
 interrupt controller actually is, how the driver maps it onto the Linux

@@ -70,7 +70,7 @@ EFR32 application + two-stage Gecko bootloader
 
 ### NCP
 
-The complete EmberZNet 7.5.1 Zigbee stack runs on the EFR32 and exposes EZSP
+The complete EmberZNet 7.5.2 Zigbee stack runs on the EFR32 and exposes EZSP
 v13. Zigbee2MQTT or ZHA connects directly through the gateway's TCP bridge.
 
 Reference: [NCP-UART-HW](./24-NCP-UART-HW/README.md).

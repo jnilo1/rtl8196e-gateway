@@ -19,7 +19,8 @@ live in the driver's performance archive.
 | v4.0.0 | 6.18.41 | 92.4 Mbit/s (91.8–92.6) | 71.4 Mbit/s (70.3–72.7) | 33.3 Mbit/s, 65% loss | 33.6 Mbit/s, 0% loss |
 | v4.2.0 | 6.18.45 | 91.7 Mbit/s (91.1–92.5) | 82.8 Mbit/s (81.2–83.6) | 40.7 Mbit/s, 57% loss | 36.7 Mbit/s, 0% loss |
 | v4.5.0 | 6.18.51 | 93.5 Mbit/s (92.5–93.9) | 82.8 Mbit/s (81.7–84.3) | 41.5 Mbit/s, 57% loss | 37.2 Mbit/s, 0% loss |
-| v4.7.0 | 6.18.54 | **93.3 Mbit/s (93.1–93.8)** | **82.6 Mbit/s (80.2–84.6)** | **41.9 Mbit/s, 56% loss** | **36.2 Mbit/s, 0% loss** |
+| v4.7.0 | 6.18.54 | 93.3 Mbit/s (93.1–93.8) | 82.6 Mbit/s (80.2–84.6) | 41.9 Mbit/s, 56% loss | 36.2 Mbit/s, 0% loss |
+| v4.8.0 | 6.18.62 | **93.8 Mbit/s (93.1–93.9)** | **83.7 Mbit/s (82.5–84.5)** | **44.2 Mbit/s, 54% loss** | **36.6 Mbit/s, 0% loss** |
 
 Notes:
 - v3.10.0, v4.0.0 and v4.2.0 were re-measured on the same day (2026-08-22) on the
@@ -31,6 +32,11 @@ Notes:
 - The v4.7.0 row (6.18.54, 2026-09-30) is the committed image with an I-MEM policy
   re-selected on 6.18.54 with an RX weight of 0.1. In the same session the previous
   policy (selected on 6.18.45, TX only) averaged 82.8 TX / 92.6 RX over three runs.
+- The 6.18.62 row (2026-11-08) is the committed image with an I-MEM policy
+  re-selected on 6.18.62 (RX weight 0.1; the 6.18.54 policy no longer fits the
+  window). In a paired session the 6.18.54 v4.7.0 image averaged 83.5 TX /
+  93.7 RX over three runs against 83.5 / 93.6 for this policy: the bump is
+  throughput-neutral, and the row-to-row step comes from the session.
 
 ## Development line (Linux 7.x, experimental)
 
@@ -40,7 +46,8 @@ Notes:
 | v4.0.0 ⁽¹⁾ | 7.1.7 | 88.8 Mbit/s (87.9–88.9) | 70.0 Mbit/s (69.0–71.2) | 35.5 Mbit/s, 63% loss | 31.4 Mbit/s, 0% loss |
 | v4.2.0 | 7.1.9 | 92.8 Mbit/s (91.8–93.4) | 82.8 Mbit/s (81.4–84.2) | 43.2 Mbit/s, 55% loss | 34.3 Mbit/s, 0% loss |
 | v4.5.0 | 7.2.5 | 93.7 Mbit/s (91.9–93.8) | 84.3 Mbit/s (82.3–85.8) | 41.5 Mbit/s, 57% loss | 35.1 Mbit/s, 0% loss |
-| v4.7.0 | 7.2.8 | **93.7 Mbit/s (92.8–93.9)** | **86.3 Mbit/s (85.1–87.0)** | **43.3 Mbit/s, 55% loss** | **36.2 Mbit/s, 0% loss** |
+| v4.7.0 | 7.2.8 | 93.7 Mbit/s (92.8–93.9) | 86.3 Mbit/s (85.1–87.0) | 43.3 Mbit/s, 55% loss | 36.2 Mbit/s, 0% loss |
+| v4.8.0 | 7.3.3 | **93.2 Mbit/s (92.6–93.7)** | **86.1 Mbit/s (83.6–87.7)** | **46.2 Mbit/s, 52% loss** | **36.6 Mbit/s, 0% loss** |
 
 Notes:
 - ⁽¹⁾ 7.1.3 (2026-07-17) and 7.1.7 (2026-08-08): 3 RX reps and 10 TX reps of 30 s,
@@ -50,6 +57,10 @@ Notes:
   measured on 2026-09-13.
 - The v4.7.0 row (7.2.8, 2026-09-30) is the first 7.2 image with an I-MEM policy
   selected on its own kernel (RX weight 0.5); 7.2.5 carried the 7.1.9 policy.
+- The 7.3.3 row (2026-11-09) is the first 7.3 image, with an I-MEM policy
+  selected on 7.3.3 (RX weight 0.25). In a paired session on 2026-11-08/09 the
+  7.2.8 v4.7.0 image averaged 86.9 TX / 93.6 RX over four runs against 86.5 /
+  93.3 for this policy; 7.3.3 with the 7.2.8 policy carried over gave 83.7 TX.
 - The two lines are never compared across rows: each row is one session.
 
 ## History

@@ -37,7 +37,7 @@
 #   NET_MODE     - "static" or "dhcp" (skip network prompt, userdata only)
 #   BOARD        - "lidl" (default) or "sengled-e39-g8c" (kernel and
 #                  bootloader components — both have per-board pre-builts)
-#   KERNEL       - "6.18" (default) or "7.2" (kernel component)
+#   KERNEL       - "6.18" (default) or "7.3" (kernel component)
 #   CONFIRM      - Set to "y" to skip confirmation prompts (same as -y)
 #
 # J. Nilo - March 2026
@@ -70,7 +70,7 @@ LINUX_IP=""
 BOOT_IP="${BOOT_IP:-$(gwconf_boot_ip)}"
 BOOT_IP_FLAG=""
 # Optional kernel-image override, forwarded to flash_kernel.sh --image (e.g.
-# --image kernel-img/lidl/kernel-7.2.img). Honored for the kernel component only.
+# --image kernel-img/lidl/kernel-7.3.img). Honored for the kernel component only.
 IMAGE_OVERRIDE=""
 # BOARD/KERNEL pick the pre-built kernel image (kernel component) and BOARD
 # the pre-built bootloader (bootloader component), forwarded to the flash
@@ -98,10 +98,10 @@ usage() {
     echo "                   env; default: ${BOOT_IP}). A hostname is resolved host-side."
     echo "  --board <name>   Board image (kernel and bootloader components; default"
     echo "                   lidl; also sengled-e39-g8c). Overrides the BOARD env var."
-    echo "  --kernel <line>  Kernel line (kernel component; default 6.18; also 7.2)."
+    echo "  --kernel <line>  Kernel line (kernel component; default 6.18; also 7.3)."
     echo "                   Overrides the KERNEL env var."
     echo "  --image <file>   Explicit kernel image (kernel component; overrides"
-    echo "                   --board/--kernel). E.g. --image kernel-img/lidl/kernel-7.2.img."
+    echo "                   --board/--kernel). E.g. --image kernel-img/lidl/kernel-7.3.img."
     echo "  --force          Skip the board-mismatch safety check."
     echo ""
     echo "Environment: BOOT_IP (default: ${BOOT_IP}), BOARD, KERNEL, SSH_TIMEOUT,"

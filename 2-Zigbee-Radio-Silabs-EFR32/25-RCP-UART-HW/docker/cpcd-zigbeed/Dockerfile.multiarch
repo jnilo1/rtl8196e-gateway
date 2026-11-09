@@ -7,7 +7,7 @@
 #   - Stage 3 (runtime): minimal image with binaries
 #
 # Versions:
-#   - cpcd: v4.5.3 (from GitHub cpc-daemon)
+#   - cpcd: v4.6.2 (from GitHub cpc-daemon)
 #   - zigbeed: EmberZNet 8.2.2 / EZSP 18 (from Simplicity SDK 2025.6.3)
 #
 # Architecture:
@@ -18,6 +18,11 @@
 # Generates zigbeed project files for all target architectures
 # slc-cli is only available for x86_64
 # ============================================================
+# Empty by default. A folder holding slc_cli_linux.zip replaces it with
+#   --build-context slc_cli=<folder>
+# (see the slc-cli step below).
+FROM scratch AS slc_cli
+
 ARG BUILDPLATFORM
 FROM --platform=${BUILDPLATFORM} ubuntu:24.04 AS generator
 
@@ -44,48 +49,57 @@ RUN curl -fsSL -o /tmp/simplicity-sdk.zip \
 
 ENV SIMPLICITY_SDK=/opt/simplicity_sdk
 
-# Install slc-cli (x86_64 only)
-RUN curl -fsSL "https://www.silabs.com/documents/login/software/slc_cli_linux.zip" -o /tmp/slc.zip && \
-    unzip -q /tmp/slc.zip -d /opt && \
-    rm /tmp/slc.zip && \
-    chmod +x /opt/slc_cli/slc
-
-ENV PATH="/opt/slc_cli:${PATH}"
 COPY zigbeed/serial_adapter_posix.c /opt/jnilo1-zigbeed/serial_adapter_posix.c
 COPY zigbeed/serial_adapter_posix.h /opt/jnilo1-zigbeed/serial_adapter_posix.h
 COPY zigbeed/install_serial_adapter.sh /opt/jnilo1-zigbeed/install_serial_adapter.sh
 RUN chmod +x /opt/jnilo1-zigbeed/install_serial_adapter.sh
 
-# Trust SDK
-RUN slc signature trust --sdk "${SIMPLICITY_SDK}" 2>/dev/null || true
-
-# Generate zigbeed project for amd64
-WORKDIR /generated/amd64
-RUN cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.c . && \
-    cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.h . && \
-    cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed/zigbeed.slcp" .
-RUN slc generate zigbeed.slcp \
-    --sdk "${SIMPLICITY_SDK}" \
-    --with="zigbee_x86_64,linux_arch_64" \
-    --without=zigbee_recommended_linux_arch \
-    -o makefile \
-    --force 2>&1 | tail -5
-RUN /opt/jnilo1-zigbeed/install_serial_adapter.sh /generated/amd64
-RUN rm -rf simplicity_sdk_* && ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
-
-# Generate zigbeed project for arm64
-WORKDIR /generated/arm64
-RUN cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.c . && \
-    cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.h . && \
-    cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed/zigbeed.slcp" .
-RUN slc generate zigbeed.slcp \
-    --sdk "${SIMPLICITY_SDK}" \
-    --with="zigbee_arm64,linux_arch_64" \
-    --without=zigbee_recommended_linux_arch \
-    -o makefile \
-    --force 2>&1 | tail -5
-RUN /opt/jnilo1-zigbeed/install_serial_adapter.sh /generated/arm64
-RUN rm -rf simplicity_sdk_* && ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
+# slc-cli (x86_64 only) generates the zigbeed makefiles for both architectures.
+# silabs.com refuses command-line downloads (403 since 2026-10-22), so the
+# archive can be supplied as a named build context, a folder holding
+# slc_cli_linux.zip (a BuildKit secret cannot: they are capped at 500 KiB):
+#   --build-context slc_cli=<folder>
+# Without it, the download is tried as before. The folder is mounted read-only
+# for this RUN only, and slc-cli is unpacked, used and deleted inside it, its
+# user.home redirected to /tmp, so no layer ever holds it: the CI exports every
+# intermediate layer to the GitHub Actions cache (cache-to mode=max).
+RUN --mount=type=bind,from=slc_cli,target=/tmp/slc-in \
+    set -e; \
+    if [ -s /tmp/slc-in/slc_cli_linux.zip ]; then \
+        echo "slc-cli: using the archive from the slc_cli build context"; \
+        cp /tmp/slc-in/slc_cli_linux.zip /tmp/slc.zip; \
+    else \
+        curl -fsSL "https://www.silabs.com/documents/login/software/slc_cli_linux.zip" -o /tmp/slc.zip || { \
+            echo "ERROR: could not download slc_cli_linux.zip; silabs.com may refuse command-line downloads."; \
+            echo "Download it in a browser, put it in a folder and pass that folder:"; \
+            echo "  --build-context slc_cli=<folder>"; \
+            exit 1; }; \
+    fi; \
+    mkdir -p /tmp/slc; \
+    unzip -q /tmp/slc.zip -d /tmp/slc; \
+    rm /tmp/slc.zip; \
+    SLC=/tmp/slc/slc_cli/slc; \
+    chmod +x "$SLC"; \
+    export JAVA_TOOL_OPTIONS="-Duser.home=/tmp/slc-home"; \
+    "$SLC" signature trust --sdk "${SIMPLICITY_SDK}" 2>/dev/null || true; \
+    for target in amd64:zigbee_x86_64 arm64:zigbee_arm64; do \
+        dir="/generated/${target%%:*}"; \
+        mkdir -p "$dir"; \
+        cd "$dir"; \
+        cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.c .; \
+        cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed"/*.h .; \
+        cp "${SIMPLICITY_SDK}/protocol/zigbee/app/projects/zigbeed/zigbeed.slcp" .; \
+        "$SLC" generate zigbeed.slcp \
+            --sdk "${SIMPLICITY_SDK}" \
+            --with="${target#*:},linux_arch_64" \
+            --without=zigbee_recommended_linux_arch \
+            -o makefile \
+            --force 2>&1 | tail -5; \
+        /opt/jnilo1-zigbeed/install_serial_adapter.sh "$dir"; \
+        rm -rf simplicity_sdk_*; \
+        ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3; \
+    done; \
+    rm -rf /tmp/slc /tmp/slc-home
 
 # ============================================================
 # Stage 2: Builder (multi-arch native compilation)
@@ -93,7 +107,7 @@ RUN rm -rf simplicity_sdk_* && ln -s "${SIMPLICITY_SDK}" simplicity_sdk_2025.6.3
 FROM ubuntu:24.04 AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG CPCD_VERSION=v4.5.3
+ARG CPCD_VERSION=v4.6.2
 ARG TARGETARCH
 
 # Install build dependencies
@@ -110,7 +124,7 @@ WORKDIR /build
 
 # Build cpcd from GitHub (native compilation), patched with the native TCP bus.
 # tcp-bus.patch adds bus_type: TCP so cpcd dials the gateway's UART<->TCP bridge
-# directly — no socat-cpc PTY shim. Same v4.5.3 clone + same patch as the native
+# directly — no socat-cpc PTY shim. Same v4.6.2 clone + same patch as the native
 # build_cpcd.sh, so the image's cpcd matches the host-built one.
 COPY cpcd/tcp-bus.patch /tmp/tcp-bus.patch
 RUN git clone --depth 1 --branch ${CPCD_VERSION} https://github.com/SiliconLabs/cpc-daemon.git \

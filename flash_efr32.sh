@@ -1571,11 +1571,12 @@ fi
 #                              from the spinel URL for none|sw (presence flag,
 #                              #142). RCP flashes on a sw board record none —
 #                              the chip build is clamped to no flow (#143).
-#   BOOTLOADER_VERSION=<ver> — Gecko Bootloader Stage-2 version reported by
-#                              USF during the flash (e.g. '2.4.2'). Updated
-#                              on EVERY successful flash (USF transits the
-#                              bootloader to upload the GBL — bootloader-only
-#                              AND app flashes both refresh this).
+#   BOOTLOADER_VERSION=<ver> — Gecko Bootloader Stage-2 version (e.g. '2.4.2').
+#                              A bootloader flash records the version read back
+#                              from the chip. An app flash refreshes it when USF
+#                              logs it (chip already in the bootloader at probe
+#                              time) and otherwise keeps the recorded value: an
+#                              app flash never changes Stage 2.
 #   MODE=otbr                — drives OTBR vs Zigbee path (set when fw=OT-RCP).
 #
 # Per-firmware mapping:
@@ -1594,7 +1595,7 @@ fi
 # so old configs converge on the single FIRMWARE_BAUD truth.
 
 # Extract FIRMWARE_VERSION from the GBL filename when it embeds one
-# (currently NCP and Router: ncp-uart-hw-7.5.1-460800-hw.gbl, z3-router-7.5.1-115200-hw.gbl).
+# (currently NCP and Router: ncp-uart-hw-7.5.2-460800-hw.gbl, z3-router-7.5.2-115200-hw.gbl).
 # The version is the field after the fw-name prefix; match it independently of
 # the trailing baud/flow/board fields (#145 — a fixed baud-is-last anchor used
 # to leave the version empty for board-suffixed builds).
@@ -1671,6 +1672,16 @@ if [ -n "$FIRMWARE_NAME" ]; then
     if ! ssh_gw "
         mkdir -p /userdata/etc
         touch /userdata/etc/radio.conf
+        # An application flash never changes Stage 2, so the version already
+        # recorded stays true when USF did not report one. It only reports it
+        # when the chip sits in the bootloader at probe time; through a running
+        # app (EZSP/Spinel/CPC -> bootloader) it logs nothing, and stripping
+        # the key unconditionally used to drop it, leaving the bootloader
+        # guard above without the running version on the next flash.
+        btl_ver='${BOOTLOADER_VERSION_DETECTED}'
+        if [ -z \"\$btl_ver\" ]; then
+            btl_ver=\$(grep '^BOOTLOADER_VERSION=' /userdata/etc/radio.conf | tail -1 | cut -d= -f2)
+        fi
         # Strip every key we own, then re-append in canonical order.
         sed -i '/^FIRMWARE=/d;/^FIRMWARE_VERSION=/d;/^FIRMWARE_BAUD=/d;/^FIRMWARE_FLOW_CTRL=/d;/^BOOTLOADER_VERSION=/d;/^MODE=/d;/^BRIDGE_BAUD=/d;/^OTBR_BAUD=/d' /userdata/etc/radio.conf
         # Use 'if' (not '[ -n x ] && echo') for the optional keys: a false
@@ -1683,7 +1694,7 @@ if [ -n "$FIRMWARE_NAME" ]; then
             if [ -n '${FIRMWARE_VER}' ]; then echo 'FIRMWARE_VERSION=${FIRMWARE_VER}'; fi
             echo 'FIRMWARE_BAUD=${fw_baud}'
             echo 'FIRMWARE_FLOW_CTRL=${RADIO_FLOW}'
-            if [ -n '${BOOTLOADER_VERSION_DETECTED}' ]; then echo 'BOOTLOADER_VERSION=${BOOTLOADER_VERSION_DETECTED}'; fi
+            if [ -n \"\$btl_ver\" ]; then echo \"BOOTLOADER_VERSION=\$btl_ver\"; fi
             if [ -n '${MODE_LINE}' ]; then echo '${MODE_LINE}'; fi
         } >> /userdata/etc/radio.conf
     "; then

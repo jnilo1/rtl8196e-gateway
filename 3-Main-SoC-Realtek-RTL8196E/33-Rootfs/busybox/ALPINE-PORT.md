@@ -21,6 +21,25 @@ announcements. Reviews are recorded here so the next one starts from a date.
 | Reviewed | Alpine edge then | Verdict |
 |---|---|---|
 | 2026-09-03 | 1.38.0-r4, 40 patches | **Bump to 1.38.0** — done the same day. Upstream moved; the port had pinned 1.37.0 four weeks before 1.38.0 was released. |
+| 2026-11-09 | 1.38.0-r8, 42 patches | **No change.** Upstream still at 1.38.0; none of Alpine's four commits since r4 touches an applet or option this build ships. |
+
+Detail for 2026-11-09. Alpine's four commits on `main/busybox` since r4, each
+checked against `busybox.config`:
+
+- r5, `0041-less-Support-the-T-option` — `less` accepts and ignores `-T`, for
+  mandoc. `CONFIG_LESS` is not set here.
+- r6, `0042-modprobe-Check-for-ELF-header-to-determine-if-module` — `modprobe`
+  checks for an ELF header before asking the kernel to decompress a module.
+  `CONFIG_MODPROBE` and `CONFIG_INSMOD` are not set, and the kernel is built
+  without module support (`# CONFIG_MODULES is not set`).
+- r7, `CONFIG_CTTYHACK=y` in Alpine's `busyboxconfig` — a configuration choice,
+  not a fix; the curated applet set here is left as it is.
+- r8, help-text fix inside Alpine's `0021-udhcpc-set-default-discover-retries-to-5`
+  (the `-t` and `-T` defaults were swapped in the usage string). 0021 is among the
+  patches not imported (see below); `S10network` passes `-T 3` explicitly.
+
+No new CVE backport and no new `ash` fix, so the 15 imported patches are still
+Alpine's current set for what this build ships.
 
 Detail for 2026-09-03. BusyBox 1.38.0 was released upstream on 2026-05-13 and
 Alpine moved to it on 2026-05-19 — a month after this port pinned 1.37.0, which

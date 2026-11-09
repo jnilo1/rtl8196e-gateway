@@ -79,18 +79,21 @@ show that the radio lacks IID 2.
    ```
 
    The Compose default pins the published multi-architecture image to release
-   `4.5.2`. To reproduce it locally from the shipped sources instead:
+   `4.8.0`. To reproduce it locally from the shipped sources instead:
 
    ```bash
    docker compose -f docker-compose-multipan.yml build otbr-agent
    ```
 
-The `ghcr.io/jnilo1/multipan-otbr:4.5.2` image builds the OpenThread and OTBR
-sources vendored by GSDK 4.5.0, adds the Silicon Labs CPC vendor transport, and
+The image builds the OpenThread and OTBR sources vendored by the Gecko SDK named
+in its Dockerfile (`GSDK_VERSION`: 4.5.1 since release `4.8.0`; the earlier
+`4.5.2` image was built from 4.5.0), adds the Silicon Labs CPC vendor transport, and
 passes `OT_MULTIPAN_RCP=ON`.
 The containers share only cpcd's Unix-socket directory. `cpcd` itself runs
 once, in the `cpcd-zigbeed` container. The Compose default pins that image to
-the tested `cpcd4.5.3-ezsp18` tag rather than following `latest`.
+the tested `cpcd4.6.2-ezsp18` tag rather than following `latest`. The two
+defaults are one tested pair and move together: `cpcd4.6.2-ezsp18` with
+`multipan-otbr:4.8.0` (both cpcd 4.6.2), as `cpcd4.5.3-ezsp18` went with `4.5.2`.
 
 OTBR uses host networking because Thread border routing needs real IPv6 router
 advertisements and mDNS on the LAN. On native Linux this places `wpan0`, OTBR's
@@ -116,6 +119,22 @@ The present hardware validation is intentionally narrow:
 - a Thread network reached leader state on channel 11 while a Hue Zigbee lamp
   on channel 11 was switched off and on through Zigbee2MQTT;
 - both protocol stacks remained attached during this short test.
+
+Repeated on 2026-11-09 with the components of this tree, in the same short form:
+
+- RCP built from GSDK 4.5.1 (CPC v5), GBL SHA-256
+  `ec064fdadb16f4bf252ba08afd25f61f689a2a5bff4e506f722acde819351590`;
+- `cpcd` 4.6.2 and `zigbeed` EmberZNet 8.2.2/EZSP 18 on IID 1, both images built
+  locally from this tree;
+- OTBR on IID 2 (RCP reporting `SL-OPENTHREAD/2.4.8.0`), in its own network
+  namespace with a dummy infrastructure interface. That kept the test off the
+  LAN, so border routing itself was not exercised;
+- a new Thread network reached leader state on channel 11 while a Lidl Zigbee
+  plug (Tuya `TS011F`) joined the Zigbee network on channel 11, was interviewed,
+  and was switched off and on eight times through Zigbee2MQTT, each command
+  confirmed by the plug's state report, with the relay seen switching;
+- Thread stayed leader throughout, including across a Zigbee2MQTT restart, and
+  cpcd logged no error.
 
 Long mixed-traffic soak testing and commissioning/controlling a real Thread
 device have **not** yet been completed. Treat this path as experimental until

@@ -11,7 +11,7 @@
 | **Last fully audited baseline** | v1.6 (pass A2) |
 | **Post-baseline changes** | v1.7 implements BRIDGE-009…011, including the teardown lock-order correction (C4); each change was reviewed and target-validated in passes C3–C6 |
 | **Validation state** | `W=1` builds and complete `vmlinux` links; BRIDGE-009…011 target gates passed on Linux 6.18 and 7.1 (C5, C6) |
-| **Maintained kernels** | Linux 6.18 and 7.2; the two sources differ only by the `kernel_bind()` cast to `struct sockaddr_unsized *` required since Linux 7.1 |
+| **Maintained kernels** | Linux 6.18 and 7.3; the two sources differ only by the `kernel_bind()` cast to `struct sockaddr_unsized *` required since Linux 7.1 |
 | **Scope** | driver, Kconfig/Makefile, tty/socket/GPIO concurrency and exposed TCP/sysfs surfaces |
 | **Companions** | `DESIGN.md`, `README.md`, `SECURITY.md` |
 

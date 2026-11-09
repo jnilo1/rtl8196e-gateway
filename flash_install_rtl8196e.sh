@@ -78,7 +78,7 @@
 #   NETMASK      - Netmask (default: this host's own netmask)
 #   GATEWAY      - Default gateway (default: this host's own default route)
 #   BOARD        - "lidl" (default) or "sengled-e39-g8c" (kernel image baked in)
-#   KERNEL       - "6.18" (default) or "7.2" (kernel line baked in)
+#   KERNEL       - "6.18" (default) or "7.3" (kernel line baked in)
 #   CONFIRM      - Set to "y" to skip confirmation prompts (same as -y)
 #
 # J. Nilo - March 2026
@@ -222,6 +222,12 @@ check_cmd() {
 
 check_cmd fakeroot     fakeroot
 check_cmd gcc          gcc
+# gcc only recommends libc6-dev, so the C library headers can be missing;
+# cvimg.c then fails on its first include, deep in the build.
+if command -v gcc >/dev/null 2>&1 \
+   && ! echo '#include <arpa/inet.h>' | gcc -E -x c - >/dev/null 2>&1; then
+    missing_pkgs+=("libc6-dev")
+fi
 check_cmd mkfs.jffs2   mtd-utils
 check_cmd mksquashfs   squashfs-tools
 

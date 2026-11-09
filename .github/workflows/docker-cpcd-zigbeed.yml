@@ -102,19 +102,60 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Derive the component tag from the Dockerfile
+        id: component
+        run: |
+          # cpcd<ver>-ezsp<N> names a component combination that users pin, so
+          # its cpcd field is read from the Dockerfile rather than written here:
+          # a cpcd bump publishes a new tag and leaves the previous one on its
+          # last build. The ezsp18 suffix is EZSP 18 from the Simplicity SDK
+          # 2025.6 line zigbeed is built on; change it with that line.
+          ver=$(sed -nE 's/^ARG CPCD_VERSION=v?([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' \
+            2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed/Dockerfile.multiarch)
+          if [ -z "$ver" ]; then
+            echo "ARG CPCD_VERSION=vX.Y.Z not found in the cpcd-zigbeed Dockerfile" >&2
+            exit 1
+          fi
+          echo "tag=cpcd${ver}-ezsp18" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # Pre-release tags (e.g. v3.8.0-rc1) publish only the versioned image
-          # and the sha tag; they must not move :latest / :cpcd4.5.3-ezsp18,
-          # which keep pointing at the last GA release until v3.8.0 ships.
+          # and the sha tag; they must not move :latest or the component tag,
+          # which keep pointing at the last GA release.
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-rc') }}
-            type=raw,value=cpcd4.5.3-ezsp18,enable=${{ !contains(github.ref_name, '-rc') }}
+            type=raw,value=${{ steps.component.outputs.tag }},enable=${{ !contains(github.ref_name, '-rc') }}
             type=sha,prefix=
+
+      # silabs.com answers 403 to command-line clients, GitHub runners included,
+      # so the slc-cli archive the image needs at build time is fetched from a
+      # release asset the maintainer keeps privately. The repo and the release
+      # tag are repository variables, the read-only token a secret; none of them
+      # appears in the tree. The archive reaches the Dockerfile as the slc_cli
+      # named build context, mounted read-only for the one RUN that uses it, so
+      # no layer and no cache entry keeps it, and RUNNER_TEMP is discarded with
+      # the runner. Without these settings the folder stays empty and the
+      # Dockerfile falls back to the silabs.com download, which then fails with
+      # a clear message.
+      - name: Fetch the slc-cli archive
+        env:
+          GH_TOKEN: ${{ secrets.SILABS_ASSETS_TOKEN }}
+          ASSETS_REPO: ${{ vars.SILABS_ASSETS_REPO }}
+          ASSETS_RELEASE: ${{ vars.SILABS_ASSETS_RELEASE }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/slc_cli"
+          if [ -z "$GH_TOKEN" ] || [ -z "$ASSETS_REPO" ] || [ -z "$ASSETS_RELEASE" ]; then
+            echo "::warning::SILABS_ASSETS_TOKEN / SILABS_ASSETS_REPO / SILABS_ASSETS_RELEASE not set: trying the silabs.com download."
+            exit 0
+          fi
+          gh release download "$ASSETS_RELEASE" --repo "$ASSETS_REPO" \
+            --pattern slc_cli_linux.zip --dir "$RUNNER_TEMP/slc_cli"
+          test -s "$RUNNER_TEMP/slc_cli/slc_cli_linux.zip"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -122,6 +163,7 @@ jobs:
           context: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW
           file: 2-Zigbee-Radio-Silabs-EFR32/25-RCP-UART-HW/docker/cpcd-zigbeed/Dockerfile.multiarch
           platforms: linux/amd64,linux/arm64
+          build-contexts: slc_cli=${{ runner.temp }}/slc_cli
           push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_image }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

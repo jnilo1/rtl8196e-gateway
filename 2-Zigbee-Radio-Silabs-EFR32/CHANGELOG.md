@@ -4,6 +4,123 @@ All notable changes to the EFR32 firmware and tooling are documented here.
 
 ---
 
+## [4.8.0] - 2026-11-09
+
+### Docker — the `cpcd-zigbeed` image builds again without silabs.com
+
+The image runs Silicon Labs' `slc-cli` to generate the zigbeed makefiles, and
+silabs.com has refused command-line downloads since 2026-10-22, GitHub's build
+machines included: a test run of the image workflow stopped on
+`curl: (22) The requested URL returned error: 403`. The Dockerfile now takes
+`slc_cli_linux.zip` from a `slc_cli` build context
+(`--build-context slc_cli=<folder>`; see "Building the image yourself" in
+`docker/README.md`), and falls back to the download when none is given. slc-cli
+is unpacked, used and deleted within one build step: neither the image nor the
+build cache keeps it. This was checked by scanning every layer of a cache
+exported the way the CI exports it. For its release builds the CI reads the
+archive from a private location.
+
+The image built this way (cpcd 4.6.2, zigbeed EmberZNet 8.2.2) was compared on
+the Lidl bench gateway with the published `cpcd4.5.3-ezsp18` image, three cold
+starts each, Zigbee2MQTT 2.14.1 started after the 60-second health start period
+of `docker-compose-zigbee.yml`. Both started Zigbee2MQTT 3 times out of 3, with
+EZSP 18 / EmberZNet 8.2.2, a single zigbeed reset per start and no cpcd error.
+Started immediately instead, without that wait, both images fail the same way:
+Zigbee2MQTT gives up after five 5-second ASH resets while zigbeed is still
+restarting.
+
+### RCP stack — cpcd 4.5.3 → 4.6.2
+
+cpcd now rejects a malformed CPC frame instead of stopping. In 4.5.3, a frame
+whose length is too short, a payload shorter than its security tag, or a final
+frame outside the system endpoint hit a `BUG_ON` and ended the daemon. 4.6.2 sends
+a reject or drops the frame and keeps running. 4.6.2 is the last release on CPC
+protocol v5, the version the RCP speaks; 4.7.0 onwards moves to v6. Its other
+changes concern the SPI driver and a new Netlink-SDIO bus, neither of which this
+project uses.
+
+The native TCP bus patch (`cpcd/tcp-bus.patch`) and the `CMakeLists.txt` patch
+inlined in `build_cpcd.sh` were rebased onto 4.6.2. Their added lines are
+unchanged; only the context moved, around the new `NETLINK_SDIO` bus. The
+`cpcd-zigbeed` and `cpcd-zigbeed-otbr` images clone 4.6.2 too.
+
+Checked against the Lidl bench gateway: cpcd 4.6.2 with `bus_type: TCP` connected
+to the RCP (Gecko SDK 4.5.1) through the UART bridge and reported
+`Secondary Protocol v5`, `Secondary CPC v4.5.1` and `Daemon startup was
+successful`, then exited cleanly. zigbeed (Simplicity SDK 2025.6.3), built
+natively against the cpcd 4.6.2 `libcpc`, then served Zigbee2MQTT 2.14.1 over its
+native TCP listener. Z2M reported `{"ezsp":18,"revision":"8.2.2 [GA]"}`, formed a
+network and started. Two later Z2M restarts reconnected to that network while cpcd
+and zigbeed kept running, and cpcd logged no error. These are host binaries: the
+`cpcd-zigbeed` image itself was not rebuilt here.
+
+The image tag follows cpcd: the workflow now derives `cpcd<version>-ezsp18` from
+the Dockerfile, so the next image is published as `cpcd4.6.2-ezsp18` and
+`cpcd4.5.3-ezsp18` stays on its last build.
+
+Same-channel multi-PAN was run again with cpcd 4.6.2, using both images built from
+this tree (`cpcd-zigbeed` and `multipan-otbr`, the latter now on Gecko SDK
+4.5.1). zigbeed served IID 1 and otbr-agent IID 2 of the GSDK 4.5.1 RCP. A new
+Thread network reached leader state on channel 11 while a Lidl Zigbee plug
+(Tuya `TS011F`) joined the Zigbee network on the same channel, and Zigbee2MQTT
+switched it off and on eight times, each command confirmed by the plug. Thread
+stayed leader throughout, including across a Zigbee2MQTT restart. OTBR ran in
+its own network namespace for this test, so border routing on the LAN was not
+exercised. The multi-PAN compose now defaults to the pair this release
+publishes, `cpcd4.6.2-ezsp18` with `multipan-otbr:4.8.0`, which is the
+combination tested here. The two defaults always move together:
+`cpcd4.5.3-ezsp18` with `4.5.2` remains available for a compose file that pins
+the previous pair.
+
+### Tooling — `flash_efr32.sh` no longer forgets the bootloader version
+
+After an application flash, `radio.conf` could lose its `BOOTLOADER_VERSION=`
+line. The script deleted the key every time but only wrote it back when
+universal-silabs-flasher logged the version, which it does only if the chip is
+already in its bootloader when probed. Flashing over a running application (for
+example OT-RCP over an NCP) logged nothing, so the line was dropped. The next
+bootloader flash then had no recorded version to check against, and its guard
+against a same-version image could only warn instead of refusing. An application
+flash never changes the bootloader, so the recorded value is now kept when the
+flasher reports none. Checked on the Lidl bench gateway: NCP then OT-RCP, with no
+version logged on the second flash, keeps `BOOTLOADER_VERSION=2.4.2`.
+
+### Firmware — Gecko SDK 4.5.0 → 4.5.1 (EmberZNet 7.5.1 → 7.5.2)
+
+The EFR32 firmwares move to Silicon Labs' latest Gecko SDK release for Series 1
+(2026-08-20). Silicon Labs describes its Zigbee (EmberZNet 7.5 revision 2),
+OpenThread (2.4.8.0) and RAIL changes as "targeted quality improvements and bug
+fixes"; it publishes no finer list.
+
+Images regenerated, Lidl only: the eight-file matrix (NCP at 115200, 230400,
+460800, 691200 and 892857; RCP and OT-RCP at 460800; Router at 115200) plus the
+iostream OT-RCP. The NCP and Router files are renamed from `…-7.5.1-…` to
+`…-7.5.2-…`. Every image is a few bytes smaller (NCP and Router −76, OT-RCP −32,
+RCP −4). The Sengled G4 prebuilts are rebuilt on 4.5.1 too: NCP and Router at
+115200 (renamed to `…-7.5.2-…`) and the iostream OT-RCP at 230400 and 460800.
+None of them has run on a G4 yet: the hardware evidence listed in
+`boards/README.md` was gathered with the 4.5.0 builds. The legacy files without a
+baud in their name (`ncp-uart-hw-7.5.1.gbl`, `z3-router-7.5.1.gbl`, `ot-rcp.gbl`)
+are left as they were.
+
+The Gecko bootloader is unchanged: rebuilt on 4.5.1, the Lidl 2.4.2 and the
+Sengled 2.4.3 images are byte-identical to the shipped ones, so there is nothing to
+reflash. The RCP keeps CPC protocol v5, which cpcd 4.6.2 still speaks. The multi-PAN container
+(`cpcd-zigbeed-otbr`) now builds its OpenThread and OTBR from the sources vendored
+by Gecko SDK 4.5.1; an image built from this tree ran in the multi-PAN test
+described under the cpcd entry.
+
+Flashed on the Lidl bench gateway with `flash_efr32.sh`:
+- NCP 115200: `Detected ApplicationType.EZSP, version '7.5.2.0 build 0'`;
+- OT-RCP 460800: `ot-ctl rcp version` reports `SL-OPENTHREAD/2.4.8.0`, and otbr-agent
+  starts on it;
+- RCP 460800: `Detected ApplicationType.CPC, version '4.5.1'`.
+
+The Router was not flashed, and zigbeed was not run against the new RCP. The
+bench was then returned to its previous OT-RCP.
+
+---
+
 ## [4.7.0] - 2026-09-30
 
 ### Tooling — `flash_efr32.sh` checks for `patch` up front

@@ -4,7 +4,7 @@
 |---|---|
 | **Last updated** | 2026-09-30 |
 | **Driver version** | 1.2 |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 
 Architecture companion to [`AUDIT.md`](AUDIT.md). This driver is the sole
 path to the 16 MB GD25Q127C SPI NOR — bootloader, kernel, squashfs rootfs

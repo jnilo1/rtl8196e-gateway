@@ -2,7 +2,7 @@
 # build_rcp.sh — Build RCP 802.15.4 firmware for EFR32MG1B232F256GM48
 #
 # This builds an 802.15.4 RCP firmware compatible with zigbeed and cpcd.
-# Uses CPC Protocol v5 (native GSDK 4.5.0) for optimal stability.
+# Uses CPC Protocol v5 (native GSDK 4.5.1) for optimal stability.
 #
 # Prerequisites:
 #   - slc (Silicon Labs CLI) in PATH
@@ -121,7 +121,7 @@ echo "========================================="
 echo "  RCP 802.15.4 Firmware Builder"
 echo "  Board:  ${BOARD} (${BOARD_NAME})"
 echo "  Target: ${TARGET_DEVICE}"
-echo "  CPC Protocol: v5 (GSDK 4.5.0)"
+echo "  CPC Protocol: v5 (GSDK 4.5.1)"
 echo "  Baud:   ${BAUD}"
 echo "========================================="
 echo ""
@@ -318,7 +318,7 @@ echo "========================================="
 echo "  BUILD COMPLETE"
 echo "========================================="
 echo ""
-echo "CPC Protocol Version: 5 (GSDK 4.5.0 native)"
+echo "CPC Protocol Version: 5 (GSDK 4.5.1 native)"
 echo ""
 echo "Firmware size:"
 if [ -f "${SRC_BASE}.out" ]; then

@@ -22,7 +22,7 @@
 #
 # Environment variables (for non-interactive use):
 #   BOARD       - "lidl" (default) or "sengled-e39-g8c" (selects the kernel image)
-#   KERNEL      - "6.18" (default) or "7.2" (selects the kernel line)
+#   KERNEL      - "6.18" (default) or "7.3" (selects the kernel line)
 #   NET_MODE    - "static", "dhcp", or "skip"
 #   IPADDR      - Static IP address for the gateway
 #   NETMASK     - Netmask

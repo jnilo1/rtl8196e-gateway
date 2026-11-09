@@ -30,14 +30,14 @@ Build the empty profiling reference:
 
 ```sh
 scripts/imem/build_profile_reference.sh 6.18
-scripts/imem/build_profile_reference.sh 7.2
+scripts/imem/build_profile_reference.sh 7.3
 ```
 
 Capture two idle, two TX and two RX profiles with
 `capture_profile.sh`, then decode and solve them with
 `analyze_captures.sh`. By default (`IMEM_RX_WEIGHT=0`) the exact knapsack
 objective is mean net TX samples, but both shipped policies were selected with
-an RX weight (6.18.54: `0.1`, 7.2.8: `0.5`; see the policy headers). The
+an RX weight (6.18.62: `0.1`, 7.3.3: `0.25`; see the policy headers). The
 bootstrap byte-retention gate must pass before a candidate may be built.
 
 `IMEM_RX_WEIGHT=<w>` adds RX coverage to that objective, with the RX samples
@@ -66,12 +66,19 @@ bench, and the best of many noisy weights overstates its own gain.
    incumbent policy, criterion fixed before the run: TX median no more than
    1 Mbit/s below the incumbent's mean, and at least +1 Mbit/s on TX or RX.
    Otherwise the incumbent stays.
+   When the incumbent no longer fits the window on the new release (upstream
+   growth of its sections), there is no incumbent to keep: the reference runs
+   are the previous release's shipped image, and the criterion is
+   non-regression only (TX no more than 1 Mbit/s and RX no more than 1 Mbit/s
+   below the reference mean; the higher TX wins, then the smaller weight).
 4. A marginal winner (a gain just above 1 Mbit/s) may be confirmed with
    `confirm_candidates.sh` before a release.
 
 Coverage does not predict throughput, especially on 6.18: on 6.18.54, `w = 0.5`
 matched the incumbent's TX coverage and still lost 2.3 Mbit/s of TCP TX against
-it. Results so far:
+it. A policy carried across a line switch can fit the window and pass the
+structural gate yet cost TX: the 7.2.8 policy on 7.3.3 lost 3.2 Mbit/s against
+7.2.8, paired, and the 7.3.3 re-selection recovered it. Results so far:
 
 | Line | Weight | TCP TX | TCP RX | Verdict |
 |---|---:|---:|---:|---|
@@ -81,6 +88,13 @@ it. Results so far:
 | 6.18.54 | incumbent (6.18.45 selection) | 82.8 | 92.6 | mean of three runs |
 | 6.18.54 | 0.1 | 82.8 | 93.7 | shipped |
 | 6.18.54 | 0.5 | 80.5 | 93.4 | TX regression |
+| 6.18.62 | reference (6.18.54 image) | 83.5 | 93.7 | mean of three runs |
+| 6.18.62 | 0.1 | 83.5 | 93.6 | shipped |
+| 6.18.62 | 0.25 | 83.1 | 93.7 | passes, lower TX |
+| 7.3.3 | carried 7.2.8 policy | 83.7 | 93.8 | TX regression |
+| 7.3.3 | reference (7.2.8 image) | 86.9 | 93.6 | mean of four runs |
+| 7.3.3 | 0.1 | 85.6 | 93.3 | lower TX |
+| 7.3.3 | 0.25 | 86.5 | 93.3 | shipped |
 
 Build the production-layout candidate from the resulting manifest:
 
@@ -152,7 +166,7 @@ kept alive by `-u`) inserted in `obj-y` order ahead of chosen objects so that
 each zone of hot functions lands either on the previous release's colours or
 exactly on its own. Layouts live under `layouts/<KERNEL_VERSION>/`. The
 mechanism is dormant for the pinned releases: only `layouts/6.18.51/` exists,
-so 6.18.54 and 7.2.8 build unpadded. A layout holds:
+so 6.18.62 and 7.3.3 build unpadded. A layout holds:
 
 - `pads.patch` — the pad objects and their Makefile insertions; applied by
   `build_kernel.sh` after `patches-<line>/` to **production builds only**

@@ -12,7 +12,7 @@
 | **Last fully audited baseline** | v1.1 (A2 plus implemented recommendations) |
 | **Post-baseline changes** | v1.2 corrects CPU-line labels/counters and diagnostic semantics; routing and interrupt data path are unchanged |
 | **Validation state** | A2 boot-verified on target; A3 independently reviewed with no security/runtime defect |
-| **Maintained kernels** | Linux 6.18 and 7.2, identical source |
+| **Maintained kernels** | Linux 6.18 and 7.3, identical source |
 | **Current finding registry** | §4 |
 | **Scope** | interrupt controller, arch dispatcher/diagnostics, DT parent routing |
 | **Companion** | `DESIGN.md` |
